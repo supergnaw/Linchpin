@@ -3,8 +3,8 @@
  *	Developer:	Loren Supernaw & lots of Googlefu
  *				Any extra functions are externally
  *				referenced by that function's definition
- *	Version:	5.3.3
- *	Date:		2017-02-04
+ *	Version:	5.4.0
+ *	Date:		2017-04-16
  *
  * ### Helpful Resources ###
  *	The following resource helped in the creation of this class:
@@ -49,7 +49,7 @@
 		define( 'DB_NAME', 'databasename' );
 	?>
 */
-define ( 'DB_CONF', 'config.linchpin.php' );
+define ( 'DB_CONF', 'linchpin.config.php' );
 
 class linchpin {
 	// Class Variables
@@ -69,6 +69,7 @@ class linchpin {
 	// Default constructor
 	public function __construct($host = 'localhost', $user = 'root', $pass = '', $name = '', $dir = '', $type = 'mysql') {
 		// load configuration file or die if declared but not found
+		// this section can be omitted if passing variables directly to the class.
 		if( defined( 'DB_CONF' )) {
 			if( file_exists( DB_CONF )) {
 				require_once( DB_CONF );
@@ -103,7 +104,7 @@ class linchpin {
 		$this->debug = array ();
 
 		// enable debug dump
-		$this->logDebug = false;
+		$this->logDebug = true;
 
 		// delete existing connection
 		if (!is_null($this->dbh)) $this->dbh = null;
@@ -121,8 +122,8 @@ class linchpin {
 		// check for existing connection
 		if ( true === $this->check_connection ()) return true;
 
+		// try to connect to database
 		try {
-			// try to connect to database
 			switch ( $this->dbType ) {
 				case 'mssql':	// MS Sql Server
 					$this->dbh = new PDO("mssql:host=". $this->dbHost .";dbname=". $this->dbName .", ". $this->dbUser .", ". $this->dbPass);
@@ -180,7 +181,7 @@ class linchpin {
 	//	 |____/ \__\__,_|\__\___|_| |_| |_|\___|_| |_|\__| |_____/_/\_\___|\___|\__,_|\__|_|\___/|_| |_|
 
 	// Execute query with optional parameters
-	public function sql_exec ( $query, $params = null, $close = false, $connect = true ) {
+	public function sqlexec ( $query, $params = null, $close = false, $connect = true ) {
 		// connect to database
 		if ( true == $connect ) if (!$this->connect()) return false;
 
@@ -301,13 +302,13 @@ class linchpin {
 	public function row_count() {
 		return $this->stmt->rowCount();
 	}
-	// I sometimes get dyslexic
+	// Legacy function for backwards compatibility
 	public function exec_sql( $query, $params = null ) {
-		return $this->sql_exec ( $query, $params );
+		return $this->sqlexec ( $query, $params );
 	}
-	// Notepad++ likes this version the most for autocomplete
-	public function sqlexec( $query, $params = null ) {
-		return $this->sql_exec ( $query, $params );
+	// I sometimes get dyslexic
+	public function sql_exec( $query, $params = null ) {
+		return $this->sqlexec ( $query, $params );
 	}
 
 	##	4.0 Transactions
@@ -319,11 +320,26 @@ class linchpin {
 
 	// Begin a transaction
 	public function trans_begin() {
-		return $this->dbh->beginTransaction();
+		if( $this->dbh->beginTransaction()) {
+			$this->dbh->setAttribute(PDO::ATTR_AUTOCOMMIT, FALSE);
+			return true;
+		} else {
+			return false;
+		}
 	}
 	// End a transaction and commit changes
 	public function trans_end() { // add functionality for sqlite - sleep for a few seconds then try again
-		return $this->dbh->commit();
+		if( $this->trans_active()) {
+			if( $this->dbh->commit()) {
+				$this->dbh->setAttribute(PDO::ATTR_AUTOCOMMIT, TRUE);
+				return true;
+			} else {
+				return false;
+			}
+		} else {
+			$this->err[] = "There is no active transaction.";
+			return false;
+		}
 	}
 	// Cancel a transaction and roll back changes
 	public function trans_cancel() {
@@ -335,20 +351,21 @@ class linchpin {
 	}
 	// Perform a transaction of queries
 	public function trans_exec( $queries ) {
-		// verify connection
+		// create new connection
 		$this->connect();
+		unset( $this->debug );
 
 		// check if queries is an array
 		if ($this->logDebug) $this->debug[] = "Check formatting if passed transaction queries.";
 		if (!is_array($queries)) {
-			$this->err[] = "Warning: transactions must be an array of queries.";
+			$this->err[] = "Error: transactions must be an array of queries.";
 			return false;
 		}
 
 		// verify no active transactions
 		if ($this->logDebug) $this->debug[] = "Check no transaction is currently active.";
 		if (true == $this->trans_active()) {
-			$this->err[] = "Warning: transaction is currently active.";
+			$this->err[] = "Error: transaction is currently active.";
 			return false;
 		}
 
@@ -359,10 +376,48 @@ class linchpin {
 			return false;
 		}
 
+		// verify the transaction has started
+		if( !$this->trans_active()) {
+			$this->err[] = "Error: transaction was requested but for some reason does not exist.";
+			return false;
+		}
+
 		// loop through each query
-		foreach ($queries as $query => $params) {
-			// execute each query
-			$res[] = $this->sql_exec($query, $params, false);
+		foreach ($queries as $sql => $params) {
+			// prepare
+			$stmt = $this->dbh->prepare( $sql );
+
+			// bind
+			if( !empty( $params ) && is_array( $params )) {
+				foreach( $params as $name => $value ) {
+					switch( true ) {
+						case is_int( $value ):
+							$type = PDO::PARAM_INT;
+							break;
+						case is_bool( $value ):
+							$type = PDO::PARAM_BOOL;
+							break;
+						case is_null( $value ):
+							$type = PDO::PARAM_NULL;
+							break;
+						default:
+							$type = PDO::PARAM_STR;
+					}
+					if( ':' != substr ( $name, 0, 1 )) $name = ':' . $name;
+					if( !$stmt->bindValue( $name, $value, $type )) {
+						$this->err[] = "Error: could not bind '{$value}' to {$name}.";
+					}
+				}
+			}
+
+			// execute
+			if( !$stmt->execute()) {
+				$error = $stmt->errorInfo();
+				$this->err[] = "{$error[2]} (MySQL error {$error[1]})";
+			}
+
+			// results
+			$res[] = $stmt->rowCount();/**/
 		}
 
 		// end/commit transaction
@@ -399,7 +454,7 @@ class linchpin {
 			// clear for new table
 			$tables = array();
 
-			$res = $this->sql_exec("SHOW TABLES");
+			$res = $this->sqlexec("SHOW TABLES");
 			if ( !empty ( $res )) {
 				foreach ($res as $key => $tbl) $tables[] = current($tbl);
 			}
@@ -447,7 +502,7 @@ class linchpin {
 		if (false == $this->valid_table($table)) return false;
 
 		// get table columns
-		$results = $this->sql_exec("SHOW COLUMNS IN `{$table}`", null, $table);
+		$results = $this->sqlexec("SHOW COLUMNS IN `{$table}`", null, $table);
 
 		// return results
 		return $results;
@@ -505,7 +560,7 @@ class linchpin {
 		if (!is_array($table)) {
 			if (false == $this->valid_table($table)) {
 				$sql = "SELECT * FROM `{$table}`";
-				$table = $this->sql_exec($sql);
+				$table = $this->sqlexec($sql);
 			} else {
 				return false;
 			}
@@ -638,7 +693,7 @@ class linchpin {
 		if (!is_array($table)) {
 			if (false == $this->valid_table($table)) {
 				$sql = "SELECT * FROM `{$table}`";
-				$table = $this->sql_exec($sql);
+				$table = $this->sqlexec($sql);
 			} else {
 				return false;
 			}
@@ -874,7 +929,7 @@ class linchpin {
 		if ( true === $count ) $sql = "SELECT COUNT(*) FROM ( {$sql} ) `records` ";
 
 		// execute and return
-		$res = $this->sql_exec ( $sql, $params );
+		$res = $this->sqlexec ( $sql, $params );
 
 		// get count
 		if ( true === $count ) $res = end ( $res[0] );
@@ -915,7 +970,7 @@ class linchpin {
 		}
 
 		// execute query
-		$res = $this->sql_exec( $query, $params );
+		$res = $this->sqlexec( $query, $params );
 		return $res;
 	}
 	// Update existing row from given key => value
@@ -941,7 +996,7 @@ class linchpin {
 
 		// compile and execute
 		$query = "UPDATE `{$table}` SET {$updates} WHERE {$where}";
-		return $this->sql_exec($query, $params);
+		return $this->sqlexec($query, $params);
 	}
 	// Delete a row
 	public function delete_row( $table, $params ) {
@@ -965,7 +1020,7 @@ class linchpin {
 
 		// compile and execute
 		$query = "DELETE FROM `{$table}` WHERE {$where};";
-		return $this->sql_exec($query, $params);
+		return $this->sqlexec($query, $params);
 	}
 	// Increment column keys; a fetch_table helper function
 	public function increment_keys ( $key, $arr ) {
@@ -1143,5 +1198,3 @@ class linchpin {
 		}
 	}
 }
-
-?>
