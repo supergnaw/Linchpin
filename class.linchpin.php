@@ -3,8 +3,8 @@
  *	Developer:	Loren Supernaw & lots of Googlefu
  *				Any extra functions are externally
  *				referenced by that function's definition
- *	Version:	5.4.0
- *	Date:		2017-04-16
+ *	Version:	5.4.1
+ *	Date:		2017-10-21
  *
  * ### Helpful Resources ###
  *	The following resource helped in the creation of this class:
@@ -151,18 +151,7 @@ class linchpin {
 	public function check_connection () {
 		// check if connected already
 		if ( !empty ( $this->dbh )) {
-			// check if connection is still available
-			$this->prep( 'SELECT 1' );
-			$this->execute();
-			$res = $this->results();
-
-			if ( 1 === $res[0]['1'] ) {
-				return true;
-			} else {
-				// reset dead connection
-				$this->close();
-				return false;
-			}
+			return true;
 		} else {
 			return false;
 		}
@@ -182,6 +171,22 @@ class linchpin {
 
 	// Execute query with optional parameters
 	public function sqlexec ( $query, $params = null, $close = false, $connect = true ) {
+		// verify query is a string
+		if( true !== is_String( $query )) {
+			$this->err[] = 'Error: Could not execute query because it is an array.';
+			return false;
+		}
+
+		// verify varible and token numbers match
+		if( true != $this->verify_token_to_variable( $query, $params )) {
+			return false;
+		}
+
+		if( empty( trim( $query ))) {
+			$this->err[] = 'Error: empty string passed as query.';
+			return false;
+		}
+
 		// connect to database
 		if ( true == $connect ) if (!$this->connect()) return false;
 
@@ -243,6 +248,35 @@ class linchpin {
 	// Prepare a statement query
 	public function prep ( $query ) {
 		$this->stmt = $this->dbh->prepare($query);
+	}
+	// Verify no missing or extra tokens/variables
+	public function verify_token_to_variable( $query, $params ) {
+		// crosscheck tokens
+		$missingTokens = array();
+		preg_match_all( "/:\w+/", $query, $tokens );
+		$tokens = end( $tokens );
+		foreach( $tokens as $token ) {
+			$oken = ltrim( $token, ':' );
+			if( !key_exists( $token, $params ) && !key_exists( $oken, $params )) $missingTokens[] = $oken;
+		}
+
+		// crosscheck variables
+		$missingVars = array();
+		foreach( $params as $var => $val ) {
+			$var = ':' . ltrim( $var, ':' );
+			if( !in_array( $var, $tokens )) $missingVars[] = $var;
+		}
+
+		// error reporting
+		if( empty( $missingTokens ) && empty( $missingVars )) {
+			return true;
+		} else {
+			$msg = '<strong>Error:</strong> Number of tokens and variables do not match!';
+			if( !empty( $missingTokens )) $msg .= '<br />Missing ' . count( $missingTokens ) . ' tokens: ' . implode( ', ', $missingTokens );
+			if( !empty( $missingVars )) $msg .= '<br />Missing ' . count( $missingVars ) . ' variables: ' . implode( ', ', $missingVars );
+			$this->err[] = $msg;
+			return false;
+		}
 	}
 	// Bind query parameters
 	public function bind ( $name, $value, $type = null, $table = null ) {
@@ -350,7 +384,7 @@ class linchpin {
 		return $this->dbh->inTransaction();
 	}
 	// Perform a transaction of queries
-	public function trans_exec( $queries ) {
+	public function trans_exec( $queries, $testMode = false ) {
 		// create new connection
 		$this->connect();
 		unset( $this->debug );
@@ -359,6 +393,12 @@ class linchpin {
 		if ($this->logDebug) $this->debug[] = "Check formatting if passed transaction queries.";
 		if (!is_array($queries)) {
 			$this->err[] = "Error: transactions must be an array of queries.";
+			return false;
+		}
+
+		// make sure array isn't empty
+		if( empty( $queries )) {
+			$this->err[] = "Error: transaction failed because an empty array of queries was passed.";
 			return false;
 		}
 
@@ -384,6 +424,10 @@ class linchpin {
 
 		// loop through each query
 		foreach ($queries as $sql => $params) {
+			// verify variable and token numbers match
+			if( false == $this->verify_token_to_variable( $sql, $params )) {
+				return false;
+			}
 			// prepare
 			$stmt = $this->dbh->prepare( $sql );
 
@@ -411,9 +455,18 @@ class linchpin {
 			}
 
 			// execute
-			if( !$stmt->execute()) {
-				$error = $stmt->errorInfo();
-				$this->err[] = "{$error[2]} (MySQL error {$error[1]})";
+			try {
+				if( !$stmt->execute()) {
+					$error = $stmt->errorInfo();
+					var_dump( $error );
+					var_dump( $stmt );
+					var_dump( $sql );
+					var_dump( $params );
+					$this->err[] = "{$error[2]} (MySQL error {$error[1]})";
+				}
+			} catch( Exception $e ) {
+				var_dump( $e );
+				var_dump( $stmt->errorInfo());
 			}
 
 			// results
@@ -421,16 +474,26 @@ class linchpin {
 		}
 
 		// end/commit transaction
-		if (!$this->trans_end()) {
-			$this->err[] = "Error: could not commit changes.";
-			if (!$this->trans_cancel()) { // rollback on failure
-				$this->err[] = "Error: failed to rollback the transaction.";
+		if( true === $testMode ) {
+			if( !$this->trans_cancel()) {
+				$this->err[] = "Error: test transaction could not be rolled back.";
 				return false;
 			} else {
-				$this->err[] = "Transaction rolled back successfully.";
+				$this->err[] = "Notice: transaction tested successfully with no errors.";
+				return $res;
 			}
 		} else {
-			return $res;
+			if (!$this->trans_end()) {
+				$this->err[] = "Error: could not commit changes.";
+				if (!$this->trans_cancel()) { // rollback on failure
+					$this->err[] = "Error: failed to rollback the transaction.";
+					return false;
+				} else {
+					$this->err[] = "Transaction rolled back successfully.";
+				}
+			} else {
+				return $res;
+			}
 		}
 	}
 
@@ -447,7 +510,7 @@ class linchpin {
 		static $tables = array();
 
 		// check if database tables needs to be reloaded
-		if (empty($tables) || true == $reload) {
+		if (empty($tables) || false !== $reload) {
 			// debug
 			if ($this->logDebug) $this->debug[] = "Querying for tables.";
 
@@ -460,7 +523,7 @@ class linchpin {
 			}
 		}
 
-		// check if table is present in database
+		// check if requested table is present in database schema
 		if (in_array($table, $tables)) {
 			return true;
 		} else {
@@ -557,6 +620,11 @@ class linchpin {
 	// Display two dimensional array or specified table as an ascii-styled table
 	public function ascii_table( $table, $textFormat = array(), $borders = 2, $class = '' ) {
 		// data check
+		if( empty( $table )) {
+			$this->err[] = 'No data supplied for ascii table.';
+			return false;
+		}
+
 		if (!is_array($table)) {
 			if (false == $this->valid_table($table)) {
 				$sql = "SELECT * FROM `{$table}`";
@@ -690,6 +758,11 @@ class linchpin {
 	// Display two dimensional array or specified table as an HTML table
 	public function html_table($table, $class = null, $altHeaders = array(), $caption = null) {
 		// data check
+		if( empty( $table )) {
+			$this->err[] = 'No data supplied for html table.';
+			return false;
+		}
+
 		if (!is_array($table)) {
 			if (false == $this->valid_table($table)) {
 				$sql = "SELECT * FROM `{$table}`";
@@ -954,11 +1027,13 @@ class linchpin {
 		$binds = ( count( $params ) > 1 ) ? implode( ", :", $columns ) : current( $columns );
 
 		// create base query
-		$query = "INSERT INTO `{$table}` (`{$cols}`) VALUES (:{$binds})";
+		$query = "INSERT INTO `{$table}`
+				  (`{$cols}`)
+				  VALUES (:{$binds})";
 
 		// update on duplicate primary key
-		if (true == $update) {						// if update is set to true
-			$query .= " ON DUPLICATE KEY UPDATE ";	// append duplicate to query
+		if (true === $update) {						// if update is set to true
+			$query .= "\nON DUPLICATE KEY UPDATE \n";	// append duplicate to query
 			$schema = $this->column_types($table);	// get table column data
 			foreach ($schema as $col) {				// loop through table columns
 				if ('PRI' != $col['Key'] && array_key_exists($col['Field'], $params)) {
@@ -1198,3 +1273,5 @@ class linchpin {
 		}
 	}
 }
+
+?>
