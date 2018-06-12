@@ -46,17 +46,25 @@ $results = $lp->sqlexec( $query, $params );
 ### Performing Transactions
 To perform a transaction, you must roll up your queries and optional parameters into an array.
 ```PHP
-$queries = array(
-    "INSERT INTO `table_a` (`col_a`, `col_b`, `col_c`) VALUES (:col_a, :col_b, :col_c)" => array(
-        'col_a' => 'value 1',
-        'col_b' => 2,
-        'col_c' => 3,
-    ),
-    "UPDATE `table_b` SET `col_1`=:val_1, `col_2`=:val_2 WHERE `col_foo` = 'bar'" => array(
-        'col_1' => 'string',
-        'col_2' => 123.45,
-    ),
+// stand alone query
+$query1 = "INSERT INTO `table_a` (`col_a`, `col_b`, `col_c`) VALUES (:col_a, :col_b, :col_c)";
+$params1 = array(
+    'col_a' => 'value 1',
+    'col_b' => 2,
+    'col_c' => 3,
 );
+// another different query
+$query2 = "UPDATE `table_b` SET `col_1`=:val_1, `col_2`=:val_2 WHERE `col_foo` = 'bar'";
+$params2 = array(
+    'col_1' => 'string',
+    'col_2' => 123.45,
+);
+// combine queries into a multidimensional array
+$queries = array(
+    $query1 => $params1,
+    $query2 => $params2,
+);
+// perform the transaction
 $results = $lp->transexec( $queries );
 ```
 
@@ -74,7 +82,7 @@ fetch_table( $table, [ $where, $filter, $group, $limit, $join, $count ]);
 | `$filter` | Array | Defined by 'col' => 'ASC' / 'DESC', not case sensitive. |
 | `$group` | String or Array | Columns to group the query by: `col_1` or `array('col_1','col_2')` |
 | `$limit` | Integer or Array | Sets limit of query; use a single number to set the limit of rows returned, or use an array of two numbers to declare a `LIMIT start, stop` expression on the query. |
-| `$join` | Array | This doesn't work because the variable ends up overwritten earlier in the function. To be continued |
+| `$join` | Array | This doesn't work because the variable ends up overwritten earlier in the function. To be continued... |
 | `$count` | Bool | Set this to `true` to return the row count; this will be under the key `COUNT(*)`.
 
 ### Insert Row
