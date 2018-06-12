@@ -3,8 +3,8 @@
  *	Developer:	Loren Supernaw & lots of Googlefu
  *				Any extra functions are externally
  *				referenced by that function's definition
- *	Version:	6.1.0
- *	Date:		2018-06-11
+ *	Version:	6.1.1
+ *	Date:		2018-06-12
  *
  * ### Purpose ###
  *	I just wanted to create my own "lightweight" but "powerful" PDO
@@ -63,7 +63,7 @@
 		define( 'DB_NAME', 'databasename' );
 	?>
 */
-// optional config file; comment out if unused
+// optional config file;
 define ( 'DB_CONF', 'config.linchpin.php' );
 
 class Linchpin {
@@ -82,11 +82,11 @@ class Linchpin {
 
 	// Default constructor
 	public function __construct( $host = 'localhost', $user = 'root', $pass = '', $name = '', $dir = 'database', $type = 'mysql' ) {
-		// load configuration file or die if declared but not found
+		// load configuration file or use passed vars
 		if( defined( 'DB_CONF' )) {
 			try {
 				// get class settings
-				require_once( DB_CONF );
+				if( file_exists( DB_CONF )) require_once( DB_CONF );
 				$host = ( defined( 'DB_HOST' )) ? DB_HOST : $host;
 				$user = ( defined( 'DB_USER' )) ? DB_USER : $user;
 				$pass = ( defined( 'DB_PASS' )) ? DB_PASS : $pass;
@@ -549,6 +549,10 @@ class Linchpin {
 				return $res;
 			}
 		}
+	}
+	// Alias for trans_exec
+	public function transexec( $queries ) {
+		return $this->trans_exec( $queries );
 	}
 
 	##	5.0 Schema
