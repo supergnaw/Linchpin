@@ -3,8 +3,8 @@
  *	Developer:	Loren Supernaw & lots of Googlefu
  *				Any extra functions are externally
  *				referenced by that function's definition
- *	Version:	6.1.1
- *	Date:		2018-06-12
+ *	Version:	6.1.2
+ *	Date:		2018-06-15
  *
  * ### Purpose ###
  *	I just wanted to create my own "lightweight" but "powerful" PDO
@@ -228,13 +228,14 @@ class Linchpin {
 		}
 
 		// varify query is a valid string
-		if( empty( trim( $query ))) {
+		$query = trim( $query );
+		if( empty( $query )) {
 			$this->err[] = 'Error: empty string passed as query.';
 			return false;
 		}
 
 		// connect to database
-		if ( true == $connect ) if (!$this->connect()) return false;
+		if (!$this->connect()) return false;
 
 		// debug
 		if ( $this->logDebug ) $this->debug[] = "Connection created.";
@@ -303,21 +304,25 @@ class Linchpin {
 		}
 	}
 	// Verify no missing or extra tokens/variables
-	public function verify_token_to_variable( $query, $params ) {
+	public function verify_token_to_variable( $query, $params = array()) {
 		// crosscheck tokens
 		$missingTokens = array();
 		preg_match_all( "/:\w+/", $query, $tokens );
 		$tokens = end( $tokens );
-		foreach( $tokens as $token ) {
-			$oken = ltrim( $token, ':' );
-			if( !key_exists( $token, $params ) && !key_exists( $oken, $params )) $missingTokens[] = $oken;
+		if( !empty( $tokens )) {
+			foreach( $tokens as $token ) {
+				$oken = ltrim( $token, ':' );
+				if( !key_exists( $token, $params ) && !key_exists( $oken, $params )) $missingTokens[] = $oken;
+			}
 		}
 
 		// crosscheck variables
 		$missingVars = array();
-		foreach( $params as $var => $val ) {
-			$var = ':' . ltrim( $var, ':' );
-			if( !in_array( $var, $tokens )) $missingVars[] = $var;
+		if( !empty( $params )) {
+			foreach( $params as $var => $val ) {
+				$var = ':' . ltrim( $var, ':' );
+				if( !in_array( $var, $tokens )) $missingVars[] = $var;
+			}
 		}
 
 		// error reporting
