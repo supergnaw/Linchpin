@@ -3,6 +3,7 @@
  *	Developer:	Loren Supernaw & lots of Googlefu
  *				Any extra functions are externally
  *				referenced by that function's definition
+ *	Source:		https://github.com/supergnaw/linchpin
  *	Version:	6.1.2
  *	Date:		2018-06-15
  *
