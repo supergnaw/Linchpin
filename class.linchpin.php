@@ -4,7 +4,7 @@
  *				Any extra functions are externally
  *				referenced by that function's definition
  *	Source:		https://github.com/supergnaw/linchpin
- *	Version:	6.1.3
+ *	Version:	6.1.4
  *	Date:		2018-07-23
  *
  * ### Purpose ###
@@ -311,7 +311,7 @@ class Linchpin {
 	public function verify_token_to_variable( $query, $params = array()) {
 		// crosscheck tokens
 		$missingTokens = array();
-		preg_match_all( "/:\w+/", $query, $tokens );
+		preg_match_all( "/:[A-Za-z_]+/", $query, $tokens );
 		$tokens = end( $tokens );
 		if( !empty( $tokens )) {
 			foreach( $tokens as $token ) {
