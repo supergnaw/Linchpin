@@ -4,8 +4,8 @@
  *				Any extra functions are externally
  *				referenced by that function's definition
  *	Source:		https://github.com/supergnaw/linchpin
- *	Version:	6.1.2
- *	Date:		2018-06-15
+ *	Version:	6.1.3
+ *	Date:		2018-07-23
  *
  * ### Purpose ###
  *	I just wanted to create my own "lightweight" but "powerful" PDO
@@ -85,6 +85,7 @@ class Linchpin {
 	public function __construct( $host = 'localhost', $user = 'root', $pass = '', $name = '', $dir = 'database', $type = 'mysql' ) {
 		// load configuration file or use passed vars
 		if( defined( 'DB_CONF' )) {
+			require_once( DB_CONF );
 			try {
 				// get class settings
 				if( file_exists( DB_CONF )) require_once( DB_CONF );
@@ -224,8 +225,10 @@ class Linchpin {
 		}
 
 		// verify varible and token numbers match
-		if( true != $this->verify_token_to_variable( $query, $params )) {
-			return false;
+		if( !empty( $params )) {
+			if( true != $this->verify_token_to_variable( $query, $params )) {
+				return false;
+			}
 		}
 
 		// varify query is a valid string
