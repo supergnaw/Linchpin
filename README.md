@@ -68,7 +68,7 @@ $queries = array(
 $results = $lp->transexec( $queries );
 ```
 
-To help initial programming, you can optionally attempt transactiosn in a "test mode" by passing true as the second parameter to the function. You can check the status via the debug variable:
+To help initial programming, you can optionally attempt transactions in a "test mode" by passing true as the second parameter to the function. You can check the status via the debug variable:
 ```PHP
 $results = $lp->trasexec( $queries, true );
 print_r( $lp->debug );
