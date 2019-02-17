@@ -4,8 +4,8 @@
  *				Any extra functions are externally
  *				referenced by that function's definition
  *	Source:		https://github.com/supergnaw/linchpin
- *	Version:	6.1.4
- *	Date:		2018-07-23
+ *	Version:	6.1.5
+ *	Date:		2019-02-17
  *
  * ### Purpose ###
  *	I just wanted to create my own "lightweight" but "powerful" PDO
@@ -311,7 +311,7 @@ class Linchpin {
 	public function verify_token_to_variable( $query, $params = array()) {
 		// crosscheck tokens
 		$missingTokens = array();
-		preg_match_all( "/:[A-Za-z_]+/", $query, $tokens );
+		preg_match_all( "/:[A-Za-z_][\w]+/", $query, $tokens );
 		$tokens = end( $tokens );
 		if( !empty( $tokens )) {
 			foreach( $tokens as $token ) {
@@ -448,7 +448,7 @@ class Linchpin {
 		return $this->dbh->inTransaction();
 	}
 	// Perform a transaction of queries
-	public function trans_exec( $queries ) {
+	public function trans_exec( $queries, $testMode = false ) {
 		// create new connection
 		$this->connect();
 		unset( $this->debug );
@@ -536,14 +536,23 @@ class Linchpin {
 			// results
 			$res[] = $stmt->rowCount();/**/
 		}
+
 		// end/commit transaction
+		$this->debug[] = "Attempting to end/commit transaction...";
 		if( true === $testMode ) {
+			$this->debug[] = "Test mode enabled, rolling back transaction (make sure table is InnoDB!)";
 			if( !$this->trans_cancel()) {
 				$this->err[] = "Error: test transaction could not be rolled back.";
 				return false;
 			} else {
-				$this->err[] = "Notice: transaction tested successfully with no errors.";
-				return $res;
+				if( empty( $this->err )) {
+					$this->debug[] = "Complete: transaction tested successfully with no errors.";
+					return $res;
+				} else {
+					$cnt = count( $this->err );
+					$this->debug[] = "Complete: transaction tested successfully but {$cnt} errors occured.";
+					return $res;
+				}
 			}
 		} else {
 			if (!$this->trans_end()) {
@@ -552,7 +561,7 @@ class Linchpin {
 					$this->err[] = "Error: failed to rollback the transaction.";
 					return false;
 				} else {
-					$this->err[] = "Transaction rolled back successfully.";
+					$this->debug[] = "Transaction rolled back successfully.";
 				}
 			} else {
 				return $res;
@@ -831,11 +840,12 @@ class Linchpin {
 
 		// begin table code
 		$code = array();
-		$code[] = (empty($class)) ? "<table>" : "<table class = '{$class}'>";
+		$code[] = ( empty( $class )) ? "<table>" : "<table class = '{$class}'>";
 		if (!empty($caption)) $code[] = "	<caption>{$caption}</caption>";
 
 		// start table headers
 		$headers = array_keys(current($table));
+		if( empty( $altHeaders )) $altHeaders = array();
 		foreach ($headers as $key => $header) if (array_key_exists($header, $altHeaders)) $headers[$key] = $altHeaders[$header];
 		$code[] = "	<tr><th>" . implode("</th><th>", $headers) . "</th></tr>";
 
