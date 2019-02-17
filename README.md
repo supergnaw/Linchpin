@@ -68,6 +68,27 @@ $queries = array(
 $results = $lp->transexec( $queries );
 ```
 
+To help initial programming, you can optionally attempt transactiosn in a "test mode" by passing true as the second parameter to the function. You can check the status via the debug variable:
+```PHP
+$results = $lp->trasexec( $queries, true );
+print_r( $lp->debug );
+```
+
+This should output something along the lines of this:
+```
+Array
+(
+    [0] => Check formatting if passed transaction queries.
+    [1] => Check no transaction is currently active.
+    [2] => Begin new transaction.
+    [3] => Attempting to end/commit transaction...
+    [4] => Test mode enabled, rolling back transaction (make sure table is InnoDB!)
+    [5] => Complete: transaction tested successfully with no errors.
+)
+```
+
+If for some reason it says you do have errors, check the ``$class->err`` variable to see what's going on.
+
 ## Query Builders
 These are a set of functions that build queries from user-defined inputs. They work well enough for simple queries but do not handle things like duplicate columns and multiple types of joins in the same query very well. It is best to use these either for simple tasks or in a development setting to help troubleshoot while you work out the kinks of your code. Or not at all. As the old adage goes, is the juce worth the squeeze?
 
