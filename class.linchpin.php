@@ -550,7 +550,8 @@ class Linchpin {
 					return $res;
 				} else {
 					$cnt = count( $this->err );
-					$this->debug[] = "Complete: transaction tested successfully but {$cnt} errors occured.";
+					$errz = ( 1 == $cnt ) ? 'error' : 'errors';
+					$this->debug[] = "Complete: transaction tested successfully but {$cnt} {$errz} occured.";
 					return $res;
 				}
 			}
@@ -564,6 +565,7 @@ class Linchpin {
 					$this->debug[] = "Transaction rolled back successfully.";
 				}
 			} else {
+				$this->debug[] = "Transaction completed successfully.";
 				return $res;
 			}
 		}
