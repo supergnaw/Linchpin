@@ -41,6 +41,9 @@ If you are using a child class to extend Linchipin, make sure to also call the p
 ### Executing Queries
 Executing queries is done using the ```sqlexec()``` function:
 ```PHP
+// call the class
+$lp = new Linchpin();
+
 $query = "SELECT * FROM `table`";
 $results = $lp->sqlexec( $query );
 ```
@@ -56,6 +59,9 @@ $results = $lp->sqlexec( $query, $params );
 ### Performing Transactions
 To perform a transaction, you must roll up your queries and optional parameters into an array. The return value from a transaction will be an array with each element being the resulting affected rows for its respective query.
 ```PHP
+// call the class
+$lp = new Linchpin();
+
 // stand alone query
 $query1 = "INSERT INTO `table_a` ( `col_a`, `col_b`, `col_c` ) VALUES ( :col_a, :col_b, :col_c )";
 $params1 = array(
@@ -81,6 +87,9 @@ $results = $lp->transexec( $queries );
 As of 7.0.0, you can also perform transactions with one array, using an aggregated string of queries as the key, and the array element being a second element with all the parameters for the entire transaction. The class will automatically sort the parameters for their associated tokens and perform the transaction. The example above could also be done like this:
 ```PHP
 // stand alone query
+// call the class
+$lp = new Linchpin();
+
 $sql = "INSERT INTO `table_a` ( `col_a`, `col_b`, `col_c` ) VALUES ( :col_a, :col_b, :col_c );
         UPDATE `table_b` SET `col_1`=:val_1, `col_2`=:val_2 WHERE `col_foo` = 'bar';";
         
