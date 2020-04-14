@@ -12,22 +12,32 @@ A MySQL PDO wrapper and "query manager" written in PHP.
   - [Delete Row](#delete-row)
 
 ## Background
-The goal of this project project was to be a "lightweight" PDO wrapper class that could be easily incorporated into any project.
+The goal of this project project was to be a "lightweight" PDO wrapper class that could be easily incorporated into any project. It is meant to be a base class from which you can extend your own classes from, but it is functional enough to just use as is, bare-bones.
 
 ## Class Usage
 ### Declaring The Class
-Declaring the class can be done two different ways. Either using a configuration file or passing variables when declaring the class. When using the configuration file, simply declare it like so:
+Declaring the class must be done using a configuration file. When using the configuration file, simply declare the class like so and the configuration file will automatically be generated the first time you run the script:
 ```PHP
 $lp = new linchipin();
 ```
-If you are foregoing the configuration file, you must pass the database information to the class, like so:
+The config should look like this:
 ```PHP
-$host = 'localhost';
-$user = 'root';
-$pass = 'P4@ssw0rd';
-$name = 'mydatabase';
-$lp = new linchpin( $host, $user, $pass, $name );
+<?php
+		  define( 'DB_HOST', 'localhost' );
+		  define( 'DB_USER', 'root' );
+		  define( 'DB_PASS', '' );
+		  define( 'DB_NAME', 'databasename' );
 ```
+If you are using a child class to extend Linchipin, make sure to also call the parent contstruct to ensure the class loads the configuration file and works properly:
+```PHP
+  public function __construct() {
+    // do the database thing
+    parent::__construct();
+
+    // add your own code
+  }
+```
+
 ### Executing Queries
 Executing queries is done using the ```sqlexec()``` function:
 ```PHP
@@ -44,10 +54,10 @@ $results = $lp->sqlexec( $query, $params );
 ```
 
 ### Performing Transactions
-To perform a transaction, you must roll up your queries and optional parameters into an array.
+To perform a transaction, you must roll up your queries and optional parameters into an array. The return value from a transaction will be an array with each element being the resulting affected rows for its respective query.
 ```PHP
 // stand alone query
-$query1 = "INSERT INTO `table_a` (`col_a`, `col_b`, `col_c`) VALUES (:col_a, :col_b, :col_c)";
+$query1 = "INSERT INTO `table_a` ( `col_a`, `col_b`, `col_c` ) VALUES ( :col_a, :col_b, :col_c )";
 $params1 = array(
     'col_a' => 'value 1',
     'col_b' => 2,
@@ -64,6 +74,26 @@ $queries = array(
     $query1 => $params1,
     $query2 => $params2,
 );
+// perform the transaction
+$results = $lp->transexec( $queries );
+```
+
+As of 7.0.0, you can also perform transactions with one array, using an aggregated string of queries as the key, and the array element being a second element with all the parameters for the entire transaction. The class will automatically sort the parameters for their associated tokens and perform the transaction. The example above could also be done like this:
+```PHP
+// stand alone query
+$sql = "INSERT INTO `table_a` ( `col_a`, `col_b`, `col_c` ) VALUES ( :col_a, :col_b, :col_c );
+        UPDATE `table_b` SET `col_1`=:val_1, `col_2`=:val_2 WHERE `col_foo` = 'bar';";
+        
+$params = array(
+    'col_a' => 'value 1',
+    'col_b' => 2,
+    'col_c' => 3,
+    'col_1' => 'string',
+    'col_2' => 123.45
+);
+
+$queries = array( $sql => $params );
+
 // perform the transaction
 $results = $lp->transexec( $queries );
 ```
