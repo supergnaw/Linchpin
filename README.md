@@ -18,7 +18,7 @@ The goal of this project project was to be a "lightweight" PDO wrapper class tha
 ### Declaring The Class
 Declaring the class must be done using a configuration file. When using the configuration file, simply declare the class like so and the configuration file will automatically be generated the first time you run the script:
 ```PHP
-$lp = new linchipin();
+$lp = new Linchipin();
 ```
 The config should look like this:
 ```PHP
