@@ -483,21 +483,17 @@ class Linchpin {
 	}
 	// Execute a prepared statement
 	public function execute() {
-		// execute query
-		if( !$this->stmt->execute()) {
-			// get error info
-			$error = $this->stmt->errorInfo();
-
-			//$this->err[] = "Statement: " . $this->stmt;
-			// error logging
-			$this->err[] = "MySQL error {$error[1]} ({$error[2]}).";
-			if( $this->logDebug ) $this->debug[] = $this->stmt->errorInfo();
-
-			// failed to execute
+		// sececute query
+		try {
+			if( !$this->stmt->execute()) {
+				$error = $this->stmt->errorInfo();
+				$this->err[] = "{$error[2]} (MySQL error {$error[1]})";
+			}
+		} catch( Exception $e ) {
+			$this->err[] = $e->getMessage();
 			return false;
-		} else {
-			return true;
 		}
+		return true;
 	}
 	// Return associated array
 	public function results() {
@@ -1307,7 +1303,7 @@ class Linchpin {
 		}
 	}
 	// Convert an array of key => value associations to a column => var string
-	public function array_to_wheres ( $where, $tables = null, $validCheck = true ) {
+	public function array_to_wheres ( $where, $bind = 'AND', $tables = null, $validCheck = true ) {
 		if ( is_array ( $where )) {
 			$wheres = array ();
 			$params = array ();
@@ -1323,7 +1319,7 @@ class Linchpin {
 					if ( !in_array ( $temp, $wheres )) {
 						$wheres[] = $temp;
 						$col = $this->increment_keys ( $col, $params );
-						$params[$col] = trim ( str_replace ( 'LIKE', '', $val ));
+						$params[$col] = trim ( str_replace ( array( 'LIKE', 'like' ), '', $val ));
 					}
 				} elseif ( '>=' == substr ( $val, 0, 2 )) {
 					$temp = "`{$col}` >= :{$col}";
@@ -1369,7 +1365,8 @@ class Linchpin {
 					}
 				}
 			}
-			$where = ( !empty ( $wheres )) ? 'WHERE ' . implode ( ' AND ', $wheres ) : '';
+			$bind = ( 'OR' == strtoupper( $bind )) ? 'OR' : 'AND';
+			$where = ( !empty ( $wheres )) ? implode ( " {$bind} ", $wheres ) : '';
 
 			return array ( $where, $params );
 		}
