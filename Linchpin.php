@@ -52,6 +52,7 @@
  * - expand insert/update/delete where parameters beyond a=b
  * - fix the where/filter implode to avoid single incorrect columns fucking up array to string conversions
  * - add BETWEEN operator to query builder, or not.
+ * - add @variable functionality for columns in array_to_wheres/filter
  *
  * ### Helpful Resources ###
  *	The following resource helped in the creation of this class:
@@ -1302,73 +1303,67 @@ class Linchpin {
 			return $key;
 		}
 	}
-	// Convert an array of key => value associations to a column => var string
-	public function array_to_wheres ( $where, $bind = 'AND', $tables = null, $validCheck = true ) {
+	// Convert an array of clause => glue associations to a 'col <=> :var' string and parameter array
+	public function array_to_wheres( $where, $tables = array()) {
 		if ( is_array ( $where )) {
 			$wheres = array ();
 			$params = array ();
-			foreach ( $where as $col => $val ) {
-				if ( 'IS NULL' == strtoupper ( trim ( $val ))) {
-					$temp = "`{$col}` IS NULL";
-					if ( !in_array ( $temp, $wheres )) $wheres[] = $temp;
-				} elseif ( 'IS NOT NULL' == strtoupper ( trim ( $val ))) {
-					$temp = "`{$col}` IS NOT NULL";
-					if ( !in_array ( $temp, $wheres )) $wheres[] = $temp;
-				} elseif ( 'LIKE' == strtoupper ( substr ( trim ( $val ), 0, 4 ))) {
-					$temp = "`{$col}` LIKE :{$col}";
-					if ( !in_array ( $temp, $wheres )) {
-						$wheres[] = $temp;
-						$col = $this->increment_keys ( $col, $params );
-						$params[$col] = trim ( str_replace ( array( 'LIKE', 'like' ), '', $val ));
+			foreach ( $where as $clause => $bind ) {
+				// parse clause
+				$arr = explode( ' ', trim( $clause ));
+				$col = $arr[0];
+				unset( $arr[0] );
+				$operand = strtoupper( $arr[1] );
+				unset( $arr[1] );
+				$val = trim( implode( ' ', $arr ));
+
+				// prep bind variable
+				$bind = strtoupper( $bind );
+
+				// strip out ticks
+				$col = str_replace( '`', '', trim( $col ));
+
+				// search for table.column criteria
+				$table = null;
+				if( false != strpos( $col, '.' )) {
+					list( $table, $col ) = explode( '.', $col );
+
+					// verify table
+					if( !array_key_exists( $table, $tables )) {
+						if( true == $this->valid_table( $table )) {
+							// verify column
+							if( true != $this->valid_column( $table, $col )) {
+								// column doesn't exist, next!
+								continue;
+							}
+						}
+					} else {
+						if( true != in_array( $col, $table )) {
+							// column doesn't exist, next!
+							continue;
+						}
 					}
-				} elseif ( '>=' == substr ( $val, 0, 2 )) {
-					$temp = "`{$col}` >= :{$col}";
-					if ( !in_array ( $temp, $wheres )) {
-						$wheres[] = $temp;
-						$col = $this->increment_keys ( $col, $params );
-						$params[$col] = trim ( str_replace ( '>=', '', $val ));
-					}
-				} elseif ( '>' == substr ( $val, 0, 1 )) {
-					$temp = "`{$col}` > :{$col}";
-					if ( !in_array ( $temp, $wheres )) {
-						$wheres[] = $temp;
-						$col = $this->increment_keys ( $col, $params );
-						$params[$col] = trim ( str_replace ( '>', '', $val ));
-					}
-				} elseif ( '<=' == substr ( $val, 0, 2 )) {
-					$temp = "`{$col}` <= :{$col}";
-					if ( !in_array ( $temp, $wheres )) {
-						$wheres[] = $temp;
-						$col = $this->increment_keys ( $col, $params );
-						$params[$col] = trim ( str_replace ( '<=', '', $val ));
-					}
-				} elseif ( '<' == substr ( $val, 0, 1 )) {
-					$temp = "`{$col}` < :{$col}";
-					if ( !in_array ( $temp, $wheres )) {
-						$wheres[] = $temp;
-						$col = $this->increment_keys ( $col, $params );
-						$params[$col] = trim ( str_replace ( '<', '', $val ));
-					}
-				} elseif ( '!=' == substr ( $val, 0, 2 )) {
-					$temp = "`{$col}` != :{$col}";
-					if ( !in_array ( $temp, $wheres )) {
-						$wheres[] = $temp;
-						$col = $this->increment_keys ( $col, $params );
-						$params[$col] = trim ( str_replace ( '!=', '', $val ));
-					}
+					$token = "{$table}_{$col}";
 				} else {
-					$temp = "`{$col}` = :{$col}";
-					if ( !in_array ( $temp, $wheres )) {
-						$wheres[] = $temp;
-						$col = $this->increment_keys ( $col, $params );
-						$params[$col] = $val;
+					$token = $col;
+				}
+
+				// parse operand
+				$params = array();
+				if( 'IS' == $operand ) {
+					if( 'NULL' == strtoupper( $val ) || 'NOT NULL' == strtoupper( $val )) {
+						$clause = ( !empty( $table )) ? "`{$table}`.`{$col}` {$operand} ".strtoupper( $val ) : "`{$col}` {$operand} ".strtoupper( $val );
 					}
+				} elseif ( in_array( $operand , array( 'LIKE','<','<=','=','!=','=>','>' ))) {
+					$bind = ( in_array( $bind, '', 'WHERE', 'OR', 'AND' )) ? $bind : '';
+					$token = $this->increment_keys( $token, $params );
+					$wheres[] = ( !empty( $table )) ? "{$bind} `{$table}`.`{$col}` {$operand} :{$token}" : "{$bind} `{$col}` {$operand} :{$token}";
+					$params[$token] = $val;
 				}
 			}
-			$bind = ( 'OR' == strtoupper( $bind )) ? 'OR' : 'AND';
-			$where = ( !empty ( $wheres )) ? implode ( " {$bind} ", $wheres ) : '';
+			$where = implode( $wheres ;
 
-			return array ( $where, $params );
+			return array( $where, $params );
 		}
 	}
 	// Convert an array of key => value associations to a colum => order string
