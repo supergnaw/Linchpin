@@ -720,7 +720,7 @@ class Linchpin {
 			// clear for new table
 			$tables = array();
 
-			$res = $this->sql_exec("SHOW TABLES");
+			$res = $this->sqlexec("SHOW TABLES");
 			if ( !empty ( $res )) {
 				foreach ($res as $key => $tbl) $tables[] = current($tbl);
 			}
@@ -768,7 +768,7 @@ class Linchpin {
 		if (false == $this->valid_table($table)) return false;
 
 		// get table columns
-		$results = $this->sql_exec("SHOW COLUMNS IN `{$table}`", null, $table);
+		$results = $this->sqlexec("SHOW COLUMNS IN `{$table}`", null, $table);
 
 		// return results
 		return $results;
@@ -1305,9 +1305,9 @@ class Linchpin {
 	}
 	// Convert an array of clause => glue associations to a 'col <=> :var' string and parameter array
 	public function array_to_wheres( $where, $tables = array()) {
-		if ( is_array ( $where )) {
-			$wheres = array ();
-			$params = array ();
+		if( is_array( $where ) && !empty( $where )) {
+			$wheres = array();
+			$params = array();
 			foreach ( $where as $clause => $bind ) {
 				// parse clause
 				$arr = explode( ' ', trim( $clause ));
@@ -1349,7 +1349,6 @@ class Linchpin {
 				}
 
 				// parse operand
-				$params = array();
 				if( 'IS' == $operand ) {
 					if( 'NULL' == strtoupper( $val ) || 'NOT NULL' == strtoupper( $val )) {
 						$clause = ( !empty( $table )) ? "`{$table}`.`{$col}` {$operand} ".strtoupper( $val ) : "`{$col}` {$operand} ".strtoupper( $val );
@@ -1361,9 +1360,11 @@ class Linchpin {
 					$params[$token] = $val;
 				}
 			}
-			$where = implode( $wheres ;
+			$where = implode( $wheres );
 
 			return array( $where, $params );
+		} else {
+			return array( '', null );
 		}
 	}
 	// Convert an array of key => value associations to a colum => order string
