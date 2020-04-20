@@ -1354,9 +1354,9 @@ class Linchpin {
 						$clause = ( !empty( $table )) ? "`{$table}`.`{$col}` {$operand} ".strtoupper( $val ) : "`{$col}` {$operand} ".strtoupper( $val );
 					}
 				} elseif ( in_array( $operand , array( 'LIKE','<','<=','=','!=','=>','>' ))) {
-					$bind = ( in_array( $bind, '', 'WHERE', 'OR', 'AND' )) ? $bind : '';
+					$bind = ( in_array( $bind, array( '', 'WHERE', 'OR', 'AND' ))) ? $bind : '';
 					$token = $this->increment_keys( $token, $params );
-					$wheres[] = ( !empty( $table )) ? "{$bind} `{$table}`.`{$col}` {$operand} :{$token}" : "{$bind} `{$col}` {$operand} :{$token}";
+					$wheres[] = ( !empty( $table )) ? " {$bind} `{$table}`.`{$col}` {$operand} :{$token}" : " {$bind} `{$col}` {$operand} :{$token}";
 					$params[$token] = $val;
 				}
 			}
