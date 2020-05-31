@@ -153,7 +153,7 @@ class Linchpin {
 		return true;
 	}
 	// Set class vairable defaults then connect
-	public function set_vars( $host = "localhost", $user = "root", $pass = "", $name = "", $dir = "database_directory", $type = "mysql" ) {
+	public function set_vars( $host, $user, $pass, $name, $dir = "database_directory", $type = "mysql" ) {
 		// set the class variables, use defined constants or passed variables
 		$this->dbHost = $host;
 		$this->dbUser = $user;
@@ -339,16 +339,16 @@ class Linchpin {
 
 			// return results of query based on statement type
 			$string = str_replace( array( "\n", "\t" ), array( " ", "" ), $query );
-			$type = trim( strtolower( strstr( $string, ' ', true )));
+			$type = trim( strtoupper( strstr( $string, ' ', true )));
 			switch( $type ) {
-				case 'select':	// return all resulting rows
-				case 'show':
+				case 'SELECT':	// return all resulting rows
+				case 'SHOW':
 					if( $this->logDebug ) $this->debug[] = "Return results.";
 					$return = $this->results();
 					break;
-				case 'insert':	// return number of rows affected
-				case 'update':
-				case 'delete':
+				case 'INSERT':	// return number of rows affected
+				case 'UPDATE':
+				case 'DELETE':
 					// if requesting insert primary key
 					if( false !== strpos( $string, 'LAST_INSERT_ID()' )) {
 						$return = $this->results();
@@ -551,7 +551,7 @@ class Linchpin {
 		// make sure queries isn't empty
 		if( $this->logDebug ) $this->debug[] = "Check transaction queries is not empty.";
 		if( empty( $queries )) {
-			$this->err[] = "Error: transaction failed because no queries was passed.";
+			$this->err[] = "Error: transaction failed because no queries were passed.";
 			return false;
 		}
 
@@ -641,10 +641,6 @@ class Linchpin {
 			try {
 				if( !$stmt->execute()) {
 					$error = $stmt->errorInfo();
-					//var_dump( $error );
-					//var_dump( $stmt );
-					//var_dump( $sql );
-					//var_dump( $params );
 					$this->err[] = "{$error[2]} (MySQL error {$error[1]})";
 				}
 			} catch( Exception $e ) {
@@ -1309,55 +1305,58 @@ class Linchpin {
 			$wheres = array();
 			$params = array();
 			foreach ( $where as $clause => $bind ) {
-				// parse clause
-				$arr = explode( ' ', trim( $clause ));
-				$col = $arr[0];
-				unset( $arr[0] );
-				$operand = strtoupper( $arr[1] );
-				unset( $arr[1] );
-				$val = trim( implode( ' ', $arr ));
+				if( !empty( $clause )) {
+					// parse clause
+					$arr = explode( ' ', trim( $clause ));
+					$col = $arr[0];
+					unset( $arr[0] );
+					$operand = strtoupper( $arr[1] );
+					unset( $arr[1] );
+					$val = trim( implode( ' ', $arr ));
 
-				// prep bind variable
-				$bind = strtoupper( $bind );
+					// prep bind variable
+					$bind = strtoupper( $bind );
 
-				// strip out ticks
-				$col = str_replace( '`', '', trim( $col ));
+					// strip out ticks
+					$col = str_replace( '`', '', trim( $col ));
 
-				// search for table.column criteria
-				$table = null;
-				if( false != strpos( $col, '.' )) {
-					list( $table, $col ) = explode( '.', $col );
+					// search for table.column criteria
+					$table = null;
+					if( false != strpos( $col, '.' )) {
+						list( $table, $col ) = explode( '.', $col );
 
-					// verify table
-					if( !array_key_exists( $table, $tables )) {
-						if( true == $this->valid_table( $table )) {
-							// verify column
-							if( true != $this->valid_column( $table, $col )) {
+						// verify table
+						if( !array_key_exists( $table, $tables )) {
+							if( true == $this->valid_table( $table )) {
+								// verify column
+								if( true != $this->valid_column( $table, $col )) {
+									// column doesn't exist, next!
+									continue;
+								}
+							}
+						} else {
+							if( true != in_array( $col, $table )) {
 								// column doesn't exist, next!
 								continue;
 							}
 						}
+						$token = "{$table}_{$col}";
 					} else {
-						if( true != in_array( $col, $table )) {
-							// column doesn't exist, next!
-							continue;
+						$token = $col;
+					}
+					
+					// parse operand
+					if( 'IS' == $operand ) {
+						if( 'NULL' == strtoupper( $val ) || 'NOT NULL' == strtoupper( $val )) {
+							$wheres[] = ( !empty( $table )) ? " {$bind} `{$table}`.`{$col}` {$operand} ".strtoupper( $val ) : " {$bind} `{$col}` {$operand} ".strtoupper( $val );
 						}
+						var_dump( $clause );
+					} elseif ( in_array( $operand , array( 'LIKE','<','<=','=','!=','=>','>' ))) {
+						$bind = ( in_array( $bind, array( '', 'WHERE', 'OR', 'AND' ))) ? $bind : '';
+						$token = $this->increment_keys( $token, $params );
+						$wheres[] = ( !empty( $table )) ? " {$bind} `{$table}`.`{$col}` {$operand} :{$token}" : " {$bind} `{$col}` {$operand} :{$token}";
+						$params[$token] = $val;
 					}
-					$token = "{$table}_{$col}";
-				} else {
-					$token = $col;
-				}
-
-				// parse operand
-				if( 'IS' == $operand ) {
-					if( 'NULL' == strtoupper( $val ) || 'NOT NULL' == strtoupper( $val )) {
-						$clause = ( !empty( $table )) ? "`{$table}`.`{$col}` {$operand} ".strtoupper( $val ) : "`{$col}` {$operand} ".strtoupper( $val );
-					}
-				} elseif ( in_array( $operand , array( 'LIKE','<','<=','=','!=','=>','>' ))) {
-					$bind = ( in_array( $bind, array( '', 'WHERE', 'OR', 'AND' ))) ? $bind : '';
-					$token = $this->increment_keys( $token, $params );
-					$wheres[] = ( !empty( $table )) ? " {$bind} `{$table}`.`{$col}` {$operand} :{$token}" : " {$bind} `{$col}` {$operand} :{$token}";
-					$params[$token] = $val;
 				}
 			}
 			$where = implode( $wheres );
@@ -1466,7 +1465,7 @@ class Linchpin {
 	public function randstring( $len, $includeSpaces = false ) {
 		// set vars
 		$src = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-		if (true === $includeSpaces) $src .= '   ';
+		if( true === $includeSpaces ) $src .= '   ';
 		$string = '';
 
 		do {
