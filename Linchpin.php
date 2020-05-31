@@ -1344,13 +1344,13 @@ class Linchpin {
 					} else {
 						$token = $col;
 					}
-					
+
 					// parse operand
 					if( 'IS' == $operand ) {
 						if( 'NULL' == strtoupper( $val ) || 'NOT NULL' == strtoupper( $val )) {
 							$wheres[] = ( !empty( $table )) ? " {$bind} `{$table}`.`{$col}` {$operand} ".strtoupper( $val ) : " {$bind} `{$col}` {$operand} ".strtoupper( $val );
 						}
-						var_dump( $clause );
+						
 					} elseif ( in_array( $operand , array( 'LIKE','<','<=','=','!=','=>','>' ))) {
 						$bind = ( in_array( $bind, array( '', 'WHERE', 'OR', 'AND' ))) ? $bind : '';
 						$token = $this->increment_keys( $token, $params );
