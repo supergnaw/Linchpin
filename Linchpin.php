@@ -793,12 +793,12 @@ class Linchpin {
 		return $colData[$column]['Type'];
 	}
 	// Gets an array of columns for a table
-	public function get_columns ( $table ) {
+	public function get_columns( $table ) {
 		// get calumn data
 		$results = $this->column_types($table);
 
 		// return false on error or empty
-		if (false == $results) return false;
+		if( false == $results ) return false;
 
 		// var prep
 		$columns = array();
@@ -819,8 +819,8 @@ class Linchpin {
 	// Display two dimensional array or specified table as an ascii-styled table
 	public function ascii_table( $table, $textFormat = array(), $borders = 2, $class = '' ) {
 		// data check
-		if (!is_array($table)) {
-			if (false == $this->valid_table($table)) {
+		if( !is_array( $table )) {
+			if( false == $this->valid_table( $table )) {
 				$sql = "SELECT * FROM `{$table}`";
 				$table = $this->sql_exec($sql);
 			} else {
@@ -829,106 +829,106 @@ class Linchpin {
 		}
 
 		// var cleaning
-		if ( !is_array ( $textFormat )) $textFormat = array ();
-		if ( empty ( $borders )) $borders = 2;
+		if( !is_array ( $textFormat )) $textFormat = array ();
+		if( empty ( $borders )) $borders = 2;
 
 		// get column widths
-		$headers = array_keys(current($table));	// get column names
+		$headers = array_keys( current( $table ));	// get column names
 		$length = array();						// set lengths for each item
-		foreach ($headers as $header) $length[$header] = strlen( utf8_decode ( strip_tags ( $header )));
-		foreach ($table as $tr => $row) {
+		foreach( $headers as $header ) $length[$header] = strlen( utf8_decode ( strip_tags ( $header )));
+		foreach( $table as $tr => $row ) {
 			// get max length of all items
-			foreach ($row as $col => $item) {
+			foreach( $row as $col => $item ) {
 				// strip html tags (invisible so would mess up widths)
-				$item = strip_tags($item);
+				$item = strip_tags( $item );
 				// format numbers as needed
-				if (array_key_exists($col, $textFormat)) $table[$tr][$col] = $this->num_format($item, $textFormat[$col]);
+				if( array_key_exists( $col, $textFormat )) $table[$tr][$col] = $this->num_format( $item, $textFormat[$col] );
 				// adds padding offsets for fomatting as needed
-				$offsets = array('money' => 2, '$' => 2, 'percent' => 2, '%' => 2);
-				$offset = (array_key_exists($col, $textFormat)
-					&& array_key_exists($textFormat[$col], $offsets))
+				$offsets = array( 'money' => 2, '$' => 2, 'percent' => 2, '%' => 2 );
+				$offset = ( array_key_exists( $col, $textFormat )
+					&& array_key_exists( $textFormat[$col], $offsets ))
 					? $offsets[$textFormat[$col]]
 						: 0;
 				// compare
-				$length[$col] = max($length[$col], strlen ( utf8_decode ( $item )) + $offset);
+				$length[$col] = max( $length[$col], strlen( utf8_decode ( $item )) + $offset );
 			}
 		}
 
 		// aesthetic correction for header centering
-		foreach ($length as $item => $len) if (( strlen ( utf8_decode ( $item )) % 2) != ($len % 2)) $length[$item] = $len + 1;
+		foreach( $length as $item => $len ) if (( strlen ( utf8_decode ( $item )) % 2 ) != ( $len % 2 )) $length[$item] = $len + 1;
 
 		// create divider
 		$div = "+";
-		$interval = ($borders > 1) ? "--+" : "---";	// h & z junction
-		$vert = ($borders > 0) ? "|" : " ";			// vertical dividers
-		foreach ($length as $header => $len) $div .= (str_repeat("-", $len)) . $interval;
-		if ($borders > 0) $code[] = $div;			// add divider as long as borders included
+		$interval = ( $borders > 1 ) ? "--+" : "---";	// h & z junction
+		$vert = ( $borders > 0 ) ? "|" : " ";			// vertical dividers
+		foreach( $length as $header => $len ) $div .= ( str_repeat( "-", $len )) . $interval;
+		if( $borders > 0 ) $code[] = $div;			// add divider as long as borders included
 
 		// add column headers
 		$row = "";
-		foreach ($headers as $header) {
+		foreach( $headers as $header ) {
 			// $row .= "| " . strtoupper($header) . (str_repeat(" ", $length[$header] - strlen($header))) . " ";
-			$row .= "{$vert} " . $this->ascii_format(strtoupper($header), $length[$header], 'center') . " ";
+			$row .= "{$vert} " . $this->ascii_format( strtoupper( $header ), $length[$header], 'center' ) . " ";
 		}
 		$code[] = "{$row}{$vert}";
-		if ($borders > 1) $code[] = $div;
+		if( $borders > 1 ) $code[] = $div;
 
 		// add each item
-		foreach ($table as $row) {
+		foreach( $table as $row ) {
 			// begin row
 			$line = "";
-			foreach ($row as $key => $item) {
+			foreach( $row as $key => $item ) {
 				// add item to row with appropriate padding
 				$align = (array_key_exists($key, $textFormat)) ? $textFormat[$key] : 'left';
 				$line .= "{$vert} " . $this->ascii_format($item, $length[$key], $align) . " ";
 			}
 			// add row and divider
 			$code[] = "{$line}{$vert}";
-			if ($borders > 2) $code[] = $div;
+			if( $borders > 2 ) $code[] = $div;
 		}
 
 		// bottom border
-		if ($borders == 2 || $borders == 1) $code[] = $div;
+		if( $borders == 2 || $borders == 1 ) $code[] = $div;
 
 		// implode and print
-		$code = implode("\n", $code);
+		$code = implode( "\n", $code );
 		$class = ( !empty ( $class )) ? "class = '{$class}'" : '';
 		echo "<pre {$class}>{$code}</pre>";
 	}
 	// Add whitespace padding to a string
-	public function ascii_format($html, $length = 0, $format = "left") {
-		$text = preg_replace("/<[^>]*>/", "", $html);
-		if (is_numeric($length) && $length > strlen ( utf8_decode ( $text ))) {
+	public function ascii_format( $html, $length = 0, $format = "left") {
+		$text = preg_replace("/<[^>]*>/", "", $html );
+		if( is_numeric( $length ) && $length > strlen( utf8_decode( $text ))) {
 			// get proper length
-			$length = max($length, strlen ( utf8_decode ( $text )));
-			switch ($format) {
+			$length = max( $length, strlen( utf8_decode( $text )));
+			switch ( $format ) {
 				case 'right':
 				case 'r':
-					$text = str_repeat(" ", $length - strlen ( utf8_decode ( $text ))) . $html;
+					$text = str_repeat( " ", $length - strlen( utf8_decode ( $text ))) . $html;
 					break;
 				case 'center':
 				case 'c':
-					$temp = $length - strlen ( utf8_decode ( $text ));
-					$left = floor($temp / 2);
-					$right = ceil($temp / 2);
-					$text = str_repeat(" ", $left) . $html . str_repeat(" ", $right);
+					$temp = $length - strlen( utf8_decode ( $text ));
+					$left = floor( $temp / 2 );
+					$right = ceil( $temp / 2 );
+					$text = str_repeat( " ", $left ) . $html . str_repeat( " ", $right );
 					break;
 				case 'money':
 				case '$':
-					$text = (is_numeric($text)) ? number_format($text, 2) : $text;
-					$padd = $length - strlen ( utf8_decode ( $text )) - 2;
-					$text = "$ " . str_repeat(" ", $padd) . $text;
+					$text = ( is_numeric( $text )) ? number_format( $text, 2 ) : $text;
+					$padd = $length - strlen ( utf8_decode( $text )) - 2;
+					$text = "$ " . str_repeat( " ", $padd ) . $text;
 					break;
 				case 'percent':
 				case '%';
-					$padd = $length - strlen ( utf8_decode ( $text )) - 2;
-					$text = str_repeat(" ", $padd) . $text . " %";
+					$padd = $length - strlen( utf8_decode( $text )) - 2;
+					$text = str_repeat( " ", $padd ) . $text . " %";
 					break;
 				case 'left':
 				case 'l':
 				default:
-					$temp = $length - strlen ( utf8_decode ( $text ));
-					$text = $html . str_repeat(" ", $temp);
+					$temp = $length - strlen( utf8_decode( $text ));
+					$text = $html . str_repeat( " ", $temp );
 					break;
 			}
 		}
@@ -1350,7 +1350,7 @@ class Linchpin {
 						if( 'NULL' == strtoupper( $val ) || 'NOT NULL' == strtoupper( $val )) {
 							$wheres[] = ( !empty( $table )) ? " {$bind} `{$table}`.`{$col}` {$operand} ".strtoupper( $val ) : " {$bind} `{$col}` {$operand} ".strtoupper( $val );
 						}
-						
+
 					} elseif ( in_array( $operand , array( 'LIKE','<','<=','=','!=','=>','>' ))) {
 						$bind = ( in_array( $bind, array( '', 'WHERE', 'OR', 'AND' ))) ? $bind : '';
 						$token = $this->increment_keys( $token, $params );
