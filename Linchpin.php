@@ -4,8 +4,8 @@
  *				Any extra functions are externally
  *				referenced by that function's definition
  *	Source:		https://github.com/supergnaw/linchpin
- *	Version:	7.0.0
- *	Date:		2020-04-13
+ *	Version:	7.0.2
+ *	Date:		2021-01-26
  *
  * ### Purpose ###
  *	I just wanted to create my own "lightweight" but "powerful" PDO
