@@ -4,8 +4,8 @@
  *				Any extra functions are externally
  *				referenced by that function's definition
  *	Source:		https://github.com/supergnaw/linchpin
- *	Version:	7.0.2
- *	Date:		2021-01-26
+ *	Version:	8.0.0
+ *	Date:		2021-06-04
  *
  * ### Purpose ###
  *	I just wanted to create my own "lightweight" but "powerful" PDO
@@ -15,7 +15,7 @@
  *	for easier project development.
  *
  * ### SQL Executor ###
- *	- sqlexec(), sql_exec(), exec_sql()
+ *	- sqlexec()
  *	These all call the same function, I just added the aliases because
  *	I sometimes forget how I named the function. These are simple and
  *	execute queries with or without parameters. The first parameter passed
@@ -24,14 +24,10 @@
  *
  * ### Query Builders ###
  *	These are a set of functions that build queries from user-defined
- *	inputs. They work well enough for simple queries but do not handle
- *	things like duplicate columns and multiple types of joins in the
- *	same query very well. It is best to use these either for simple
- *	tasks or in a development setting to help troubleshoot while you
- *	work out the kinks of your code. Or not at all. As the old adage
- *	goes, is the juice really worth the squeeze?
+ *	inputs to modify table data. These have built-in table and column
+ *	name verification to prevent erroneous queries and also incorperate
+ *	the parameter binding within sqlexec() to prevent sql injection.
  *
- *	fetch_table()	- fetches a table
  *	insert_row()	- inserts a row into a table
  *	update_row()	- updates a row in a table
  *	delete_row()	- drops a row from a table
@@ -54,37 +50,27 @@
  * - add BETWEEN operator to query builder, or not.
  * - add @variable functionality for columns in array_to_wheres/filter
  *
- * ### Helpful Resources ###
+ * ### Helpful References ###
  *	The following resource helped in the creation of this class:
  *	http://culttt.com/2012/10/01/roll-your-own-pdo-php-class/
  *	http://code.tutsplus.com/tutorials/why-you-should-be-using-phps-pdo-for-database-access--net-12059
  */
 
-# Configuration File
-/*
- *	A typical config file should contain the database host, username,
- *	password, and database name to access the database. If the file does
- *	not exist, Linchipin will automatically generate one with the the
- *	with the appropriate contents, as exampled below:
-	<?php
-		define( 'DB_HOST', 'localhost' );
-		define( 'DB_USER', 'root' );
-		define( 'DB_PASS', '' );
-		define( 'DB_NAME', 'databasename' );
-	?>
-*/
-// script timing
-if ( !defined( 'SCRIPT_START' )) define( 'SCRIPT_START', microtime( true ));
-
-// optional config file;
-define( 'DB_CONF', __DIR__ . DIRECTORY_SEPARATOR . 'linchpin_config.php' );
-
 class Linchpin {
 	// Class Variables
-	public $dbh;		// database handler
+	public $dbh;	// database handler
 	public $stmt;	// query statement holder
-	public $err;		// error log array
+	public $err;	// error log array
 	public $debug;	// debug log array
+
+	// schema checking
+	private $tables;
+
+	// database settings
+	protected $dbHost;
+	protected $dbUser;
+	protected $dbPass;
+	protected $dbName;
 
 	##	1.0 Structs
 	//	  ____  _                   _
@@ -94,64 +80,21 @@ class Linchpin {
 	//	 |____/ \__|_|   \__,_|\___|\__|___/
 
 	// Default constructor
-	public function __construct() {
-		// create config file if it doesn't exist
-		if( !file_exists( DB_CONF )) $this->create_config();
-		// load configuration file
-		$this->load_config();
+	public function __construct( $host = "localhost", $user = "root", $pass = "", $name = "database_name" ) {
+		// start timing
+		$this->script_start();
+		// set class vars for database connection
+		$this->set_vars( $host, $user, $pass, $name );
+		// load table schema for table/column sanity checking
+		$this->load_table_schema();
 	}
+
 	// Default destructor
 	public function __destruct() {
 		// close any existing database connection
 		$this->close();
 	}
-	// Create configuration file if it doesn't exist
-	function create_config() {
-		$config = "<?php
-		  define( 'DB_HOST', 'localhost' );
-		  define( 'DB_USER', 'root' );
-		  define( 'DB_PASS', '' );
-		  define( 'DB_NAME', 'database_name' );";
-		file_put_contents( DB_CONF, $config );
-		if( file_exists( DB_CONF )) {
-			die( "New Linchipin configuration file created, please update database info: " . DB_CONF );
-		} else {
-			die( "Could not create Linchpin configuration file, please verify directory permissions: " . DB_CONF );
-		}
-	}
-	// Load configuration file or use passed vars
-	function load_config() {
-		if( defined( 'DB_CONF' )) {
-			try {
-				// include the configuration file
-				if( !file_exists( DB_CONF )) {
-					throw new Exception( 'Unable to locate Linchpin configuration file: ' . DB_CONF );
-				} else {
-					// load database configuration
-					require_once( DB_CONF );
 
-					// set database settings
-					if( !defined( 'DB_HOST' )) throw new Exception( "Linchpin missing database host." );
-					$host = DB_HOST;
-					if( !defined( 'DB_USER' )) throw new Exception( "Linchpin missing database user." );
-					$user = DB_USER;
-					if( !defined( 'DB_PASS' )) throw new Exception( "Linchpin missing database password." );
-					$pass = DB_PASS;
-					if( !defined( 'DB_NAME' )) throw new Exception( "Linchpin missing database name." );
-					$name = DB_NAME;
-				}
-			} catch( Exception $e ) {
-				$this->err[] = $e->getMessage();
-				return false;
-			}
-		} else {
-			die( "Linchipin config file not defined." );
-		}
-
-		// set class vars
-		$this->set_vars( $host, $user, $pass, $name );
-		return true;
-	}
 	// Set class vairable defaults then connect
 	public function set_vars( $host, $user, $pass, $name, $dir = "database_directory", $type = "mysql" ) {
 		// set the class variables, use defined constants or passed variables
@@ -169,20 +112,6 @@ class Linchpin {
 		// delete existing connection
 		if( !is_null( $this->dbh )) $this->dbh = null;
 	}
-	// Create database directory
-	public function create_db_dir( $dir ) {
-		if( is_dir( $dir )) {
-			return true;
-		} else {
-			mkdir( $dir, 0755 );
-			if( is_dir( $dir )) {
-				return true;
-			} else {
-				$this->err[] = "Failed to create database directory.";
-				return false;
-			}
-		}
-	}
 
 	##	2.0 Connections
 	//	   ____                            _   _
@@ -194,7 +123,7 @@ class Linchpin {
 	// Connect to database
 	public function connect() {
 		// check for existing connection
-		if( true === $this->check_connection()) {
+		if( $this->check_connection()) {
 			return true;
 		}
 
@@ -204,8 +133,9 @@ class Linchpin {
 			if( !property_exists( $this, 'dbUser' ))	throw new Exception ( 'Missing database connection property: user' );
 			if( !property_exists( $this, 'dbPass' ))	throw new Exception ( 'Missing database connection property: password' );
 			if( !property_exists( $this, 'dbName' ))	throw new Exception ( 'Missing database connection property: database name' );
-			if( !property_exists( $this, 'dbDir' ))		throw new Exception ( 'Missing database connection property: database directory' );
-			if( !property_exists( $this, 'dbType' ))	throw new Exception ( 'Missing database connection property: database type' );
+			// mysqlite stuff
+			// if( !property_exists( $this, 'dbDir' ))		throw new Exception ( 'Missing database connection property: database directory' );
+			// if( !property_exists( $this, 'dbType' ))	throw new Exception ( 'Missing database connection property: database type' );
 		} catch( Exception $e ) {
 			$this->err[] = $e->getMessage();
 			return false;
@@ -219,23 +149,25 @@ class Linchpin {
 
 		// create new connection
 		try {
-			switch( $this->dbType ) {
-				case 'mssql':	// MS Sql Server
-					$this->dbh = new PDO( "mssql:host={$this->dbHost};dbname={$this->dbName}", $this->dbUser, $this->dbPass, $options );
-					if( $this->logDebug ) $this->debug[] = "connection created";
-					break;
-				case 'sybase':	// Sybase with PDO_DBLIB
-					$this->dbh = new PDO( "sybase:host={$this->dbHost};dbname={$this->dbName}", $this->dbUser, $this->dbPass, $options );
-					if( $this->logDebug ) $this->debug[] = "connection created";
-					break;
-				case 'sqlite':	// SQLite
-					$this->dbh = new PDO( "sqlite:". $this->dbDir . DIRECTORY_SEPARATOR . $this->dbName);
-					if( $this->logDebug ) $this->debug[] = "connection created";
-					break;
-				case 'mysql':	// Mysql
-					$this->dbh = new PDO( "mysql:host={$this->dbHost};dbname={$this->dbName}", $this->dbUser, $this->dbPass, $options );
-					if( $this->logDebug ) $this->debug[] = "connection created";
-					break;
+			// Microsoft SQL Database
+			if( 'mssql' == $this->dbType ) {
+				$this->dbh = new PDO( "mssql:host={$this->dbHost};dbname={$this->dbName}", $this->dbUser, $this->dbPass, $options );
+				if( $this->logDebug ) $this->debug[] = "connection created";
+			}
+			// Sybase Databse
+			if( 'sybase' == $this->dbType ) {
+				$this->dbh = new PDO( "sybase:host={$this->dbHost};dbname={$this->dbName}", $this->dbUser, $this->dbPass, $options );
+				if( $this->logDebug ) $this->debug[] = "connection created";
+			}
+			// SQLite Database
+			if( 'sqlite' == $this->dbType ) {
+				$this->dbh = new PDO( "sqlite:". $this->dbDir . DIRECTORY_SEPARATOR . $this->dbName);
+				if( $this->logDebug ) $this->debug[] = "connection created";
+			}
+			// MySQL Database
+			if( 'mysql' == $this->dbType ) {
+				$this->dbh = new PDO( "mysql:host={$this->dbHost};dbname={$this->dbName}", $this->dbUser, $this->dbPass, $options );
+				if( $this->logDebug ) $this->debug[] = "connection created";
 			}
 		} catch( PDOException $exception ) {
 			// catch error
@@ -243,19 +175,20 @@ class Linchpin {
 			return false;
 		}
 
-		// connection successful
+		// no errors, conneciton was successful
 		return true;
 	}
+
 	// Test connection
 	public function check_connection() {
 		// check if connected already
-		if ( !empty ( $this->dbh )) {
+		if( !empty ( $this->dbh )) {
 			// check if connection is still alive
 			$this->prep( 'SELECT 1' );
 			$this->execute();
 			$res = $this->results();
 
-			if ( 1 === $res[0]['1'] ) {
+			if( 1 === $res[0]['1'] ) {
 				if( $this->logDebug ) $this->debug[] = "connection exists";
 				return true;
 			} else {
@@ -268,10 +201,11 @@ class Linchpin {
 			return false;
 		}
 	}
+
 	// Disconnect from database
 	public function close() {
 		$this->dbh = null;		// secure
-		unset ( $this->dbh );	// super secure
+		unset( $this->dbh );	// super secure
 		if( empty( $this->dbh )) {
 			return true;
 		} else {
@@ -289,7 +223,7 @@ class Linchpin {
 	// Execute query with optional parameters
 	public function sqlexec( $query, $params = null, $close = false ) {
 		// verify query is a string
-		if( true !== is_string( $query )) {
+		if( !is_string( $query )) {
 			$this->err[] = 'Error: Could not execute query because it is not a string.';
 			return false;
 		}
@@ -301,10 +235,11 @@ class Linchpin {
 			return false;
 		}
 
-		// verify varible and token numbers match
+		// verify parameters to :tokens
 		if( !empty( $params )) {
 			$vars = $this->verify_token_to_params( $query, $params );
 			if( true != $vars ) {
+				// remove extra parameters
 				if( is_array( $vars )) {
 					$params = $this->remove_extra_params( $params, $vars );
 				} else {
@@ -314,26 +249,31 @@ class Linchpin {
 		}
 
 		// connect to database
-		if (!$this->connect()) return false;
+		if( !$this->connect()) {
+			return false;
+		}
 
 		// debug
-		if ( $this->logDebug ) $this->debug[] = "Connection created.";
+		if( $this->logDebug ) $this->debug[] = "Connection created.";
 
 		// prepare statement
 		$this->prep( $query, $params );
 
 		// bind parameters
-		if ( !empty( $params ) && is_array( $params )) {
+		if( !empty( $params ) && is_array( $params )) {
 			foreach( $params as $name => $value ) {
 				// bind parameters
-				if( !$this->bind( $name, $value )) $this->err[] = "Could not bind {$value} to {$name}.";
-				// debug
-				if( $this->logDebug ) $this->debug[] = "Parameter bound: '{$value}' to `{$name}`";
+				if( !$this->bind( $name, $value )) {
+					$this->err[] = "Could not bind '{$value}' to :{$name}";
+				} else {
+					// debug
+					if( $this->logDebug ) $this->debug[] = "Parameter bound: '{$value}' to :{$name}";
+				}
 			}
 		}
 
 		// execute & return
-		if ( $this->execute()) {
+		if( $this->execute()) {
 			// debug
 			if( $this->logDebug ) $this->debug[] = "Statement successfully executed.";
 
@@ -376,12 +316,15 @@ class Linchpin {
 		// return query results
 		return $return;
 	}
+
 	// Prepare a statement query
 	public function prep( $query, $params = null ) {
 		try {
 			if( empty( $params )) {
+				// prepare a statement
 				$this->stmt = $this->dbh->prepare( $query );
 			} else {
+				// prepare a statement with parameters
 				$this->stmt = $this->dbh->prepare( $query, $params );
 			}
 			return true;
@@ -390,11 +333,12 @@ class Linchpin {
 			return false;
 		}
 	}
+
 	// Verify no missing or extra tokens/variables
 	public function verify_token_to_params( $query, $params = array()) {
 		// verify each token has an associated parameter
 		$missingParams = array();
-		preg_match_all( "/:[A-Za-z_][\w]+/", $query, $tokens );
+		preg_match_all( "/:[A-Za-z_][\w]*/", $query, $tokens );
 		$tokens = $tokens[0];
 		if( !empty( $tokens )) {
 			foreach( $tokens as $token ) {
@@ -445,30 +389,19 @@ class Linchpin {
 	}
 
 	// Bind query parameters
-	public function bind( $name, $value, $type = null, $table = null ) {
-		// get value type if not set
-		if( empty( $type )) {
-			if( !empty( $table )) {
-				$type = $this->col_datatype( $name, $table );
-			} else {
-				switch( true ) {
-					case is_int( $value ):	// integer
-						$type = PDO::PARAM_INT;
-						break;
-					case is_bool( $value ):	// boolean
-						$type = PDO::PARAM_BOOL;
-						break;
-					case is_null( $value ):	// null
-						$type = PDO::PARAM_NULL;
-						break;
-					case is_array( $value ):
-						$this->err[] = "{$name} parameter value is an array: [" . implode( ', ', $value ) . "]";
-						return false;
-						break;
-					default:				// string
-						$type = PDO::PARAM_STR;
-				}
-			}
+	public function bind( $name, $value ) {
+		// set binding type
+		if( is_int( $value )) { // int
+			$type = PDO::PARAM_INT;
+		} elseif( is_bool( $value )) { // boolean
+			$type = PDO::PARAM_BOOL;
+		} elseif( is_null( $value )) { // null
+			$type = PDO::PARAM_NULL;
+		} elseif( is_array( $value )) { // array
+			$this->err[] = "Error: {$name} parameter value is an array";
+			return false;
+		} else { // string
+			$type = PDO::PARAM_STR;
 		}
 
 		// backwards compatibility; older versions require colon prefix where newer versions do not
@@ -482,9 +415,10 @@ class Linchpin {
 			return false;
 		}
 	}
+
 	// Execute a prepared statement
 	public function execute() {
-		// sececute query
+		// execute query
 		try {
 			if( !$this->stmt->execute()) {
 				$error = $this->stmt->errorInfo();
@@ -496,10 +430,12 @@ class Linchpin {
 		}
 		return true;
 	}
+
 	// Return associated array
 	public function results() {
 		return $this->stmt->fetchAll ( PDO::FETCH_ASSOC );
 	}
+
 	// Get the number of rows affected by the last query
 	public function row_count() {
 		return $this->stmt->rowCount();
@@ -515,17 +451,18 @@ class Linchpin {
 	// Begin a transaction
 	public function trans_begin() {
 		if( $this->dbh->beginTransaction()) {
-			$this->dbh->setAttribute(PDO::ATTR_AUTOCOMMIT, FALSE);
+			$this->dbh->setAttribute( PDO::ATTR_AUTOCOMMIT, FALSE );
 			return true;
 		} else {
 			return false;
 		}
 	}
+
 	// End a transaction and commit changes
 	public function trans_end() { // add functionality for sqlite - sleep for a few seconds then try again
 		if( $this->trans_active()) {
 			if( $this->dbh->commit()) {
-				$this->dbh->setAttribute(PDO::ATTR_AUTOCOMMIT, TRUE);
+				$this->dbh->setAttribute( PDO::ATTR_AUTOCOMMIT, TRUE );
 				return true;
 			} else {
 				return false;
@@ -535,14 +472,17 @@ class Linchpin {
 			return false;
 		}
 	}
+
 	// Cancel a transaction and roll back changes
 	public function trans_cancel() {
 		return $this->dbh->rollBack();
 	}
+
 	// Check if transaction is currently active
 	public function trans_active() {
 		return $this->dbh->inTransaction();
 	}
+
 	// Perform a transaction of queries
 	public function transexec( $queries, $testMode = false ) {
 		// create new connection
@@ -703,109 +643,62 @@ class Linchpin {
 	//	  ___) | (__| | | |  __/ | | | | | (_| |
 	//	 |____/ \___|_| |_|\___|_| |_| |_|\__,_|
 
+	// Loads table schema into class variables
+	public function load_table_schema() {
+		$params = array();
+
+		$sql = "SELECT `TABLE_NAME` FROM `INFORMATION_SCHEMA`.`TABLES` WHERE table_schema = :database_name;";
+		$sql = "SELECT `TABLE_NAME`,`COLUMN_NAME`,`DATA_TYPE`
+				FROM `INFORMATION_SCHEMA`.`COLUMNS`
+				WHERE `TABLE_SCHEMA` = :database_name;";
+		$res = $this->sqlexec( $sql, array( 'database_name' => $this->dbName ));
+
+		foreach( $res as $row ) {
+			$this->tables[$row['TABLE_NAME']][$row['COLUMN_NAME']] = $row['DATA_TYPE'];
+		}
+	}
+
 	// Validate a table is in the database
-	public function valid_table ( $table, $reload = false ) {
-		// set persistant table variable between function calls
-		static $tables = array();
-
-		// check if database tables needs to be reloaded
-		if (empty($tables) || true == $reload) {
-			// debug
-			if( $this->logDebug ) $this->debug[] = "Querying for tables.";
-
-			// clear for new table
-			$tables = array();
-
-			$res = $this->sqlexec("SHOW TABLES");
-			if ( !empty ( $res )) {
-				foreach ($res as $key => $tbl) $tables[] = current($tbl);
-			}
+	public function valid_table( $table ) {
+		// check if the table is valid
+		if( array_key_exists( $table, $this->tables )) {
+			return true;
 		}
 
-		// check if table is present in database
-		if (in_array($table, $tables)) {
+		// reload table schema just in case a create table query was performed
+		$this->load_table_schema();
+		if( array_key_exists( $table, $this->tables )) {
 			return true;
 		} else {
-			$this->err[] = "Warning: invalid table provided {$table}";
 			return false;
 		}
 	}
+
 	// Validate a column is in a table
-	public function valid_column( $table, $column, $reload = false ) {
-		// set persistence
-		static $tbl = '';
-		static $cols = array();
-
-		// update table and columns
-		if( $tbl != $table || $reload == true ) {
-			$tbl = $table;
-			$cols = array();
-			$res = $this->column_types($tbl);
-
-			if( false != $res ) {
-				foreach( $res as $col ) {
-					$cols[] = $col['Field'];
-				}
-			} else {
-				return false;
-			}
+	public function valid_column( $table, $column ) {
+		// check if the column is valid
+		if( array_key_exists( $table, $this->tables[$table] )) {
+			return true;
 		}
 
-		// verify column is valid
-		if( in_array( $column, $cols )) {
+		// reload table schema just in case a create table query was performed
+		$this->load_table_schema();
+		if( array_key_exists( $table, $this->tables[$table] )) {
 			return true;
 		} else {
 			return false;
 		}
 	}
-	// Gets table columns and attributes
-	public function column_types( $table, $column = null ) {
-		// verify table exists
-		if (false == $this->valid_table($table)) return false;
 
-		// get table columns
-		$results = $this->sqlexec("SHOW COLUMNS IN `{$table}`", null, $table);
-
-		// return results
-		return $results;
-	}
-	// Gets datatype of column
-	public function col_datatype( $column, $table ) {
-		// verify table and column
-		if (false == $this->valid_column($table, $column)) return false;
-
-		// initialize static variables
-		static $tbl = '';
-		static $colData = array();
-
-		// update table data
-		if (empty($tbl) || $tbl != $table) {
-			$tbl = $table;
-			unset($colData);
-			$cols = $this->column_types($tbl);
-			foreach ($cols as $key => $col) {
-				list($cols[$key]['Type']) = explode("(", $cols[$key]['Type']);
-				$colData[$col['Field']] = $col;
-			}
+	// Gets table primary key
+	public function table_primary_key( $table ) {
+		if( !valid_table( $table )) {
+			return false;
 		}
 
-		// default datatype arrays
-		return $colData[$column]['Type'];
-	}
-	// Gets an array of columns for a table
-	public function get_columns( $table ) {
-		// get calumn data
-		$results = $this->column_types($table);
-
-		// return false on error or empty
-		if( false == $results ) return false;
-
-		// var prep
-		$columns = array();
-		// parse columns
-		foreach ($results as $result) $columns[] = $result['Field'];
-		// return data
-		return $columns;
+		$sql = "SHOW KEYS FROM {$table} WHERE Key_name = 'PRIMARY';";
+		$res = $this->sqlexec( $sql );
+		return $res[0]['Column_name'];
 	}
 
 	##	6.0 Table Display
@@ -822,7 +715,7 @@ class Linchpin {
 		if( !is_array( $table )) {
 			if( false == $this->valid_table( $table )) {
 				$sql = "SELECT * FROM `{$table}`";
-				$table = $this->sql_exec($sql);
+				$table = $this->sqlexec($sql);
 			} else {
 				return false;
 			}
@@ -959,7 +852,7 @@ class Linchpin {
 		if (!is_array($table)) {
 			if (false == $this->valid_table($table)) {
 				$sql = "SELECT * FROM `{$table}`";
-				$table = $this->sql_exec($sql);
+				$table = $this->sqlexec($sql);
 			} else {
 				return false;
 			}
@@ -995,228 +888,28 @@ class Linchpin {
 	//	  \__\_\\__,_|\___|_|   \__, | |____/ \__,_|_|_|\__,_|\___|_|  |___/
 	//							|___/
 
-	// Simple select for one table or many tables with joins and sorts with minimal optional parameters
-	public function fetch_table ( $table, $where = null, $filter = null, $group = null, $limit = null, $join = null, $count = null ) {
-		// initiate variables
-		$params = array ();
-		$sql = '';
-		$wheres = array ();
-		$filters = array ();
-		$groups = array ();
-
-		// where
-		if ( is_array ( $where )) {
-			foreach ( $where as $col => $val ) {
-				// validate column is real
-				if ( is_array ( $table )) {
-					foreach ( $table as $tbl => $join ) { // for an array of tables
-						if ( true == $this->valid_column ( $tbl, $col )) {
-							if ( 'IS NULL' == strtoupper ( trim ( $val ))) {
-								$temp = "`{$col}` IS NULL";
-								if ( !in_array ( $temp, $wheres )) $wheres[] = $temp;
-							} elseif ( 'IS NOT NULL' == strtoupper ( trim ( $val ))) {
-								$temp = "`{$col}` IS NOT NULL";
-								if ( !in_array ( $temp, $wheres )) $wheres[] = $temp;
-							} elseif ( 'LIKE' == strtoupper ( substr ( trim ( $val ), 0, 4 ))) {
-								$temp = "`{$col}` LIKE :{$col}";
-								if ( !in_array ( $temp, $wheres )) {
-									$wheres[] = $temp;
-									$col = $this->increment_keys ( $col, $params );
-									$params[$col] = trim ( str_replace ( 'LIKE', '', $val ));
-								}
-							} elseif ( 'IN' == strtoupper ( trim ( $val ))) {
-
-							} elseif ( '>=' == substr ( $val, 0, 2 )) {
-								$temp = "`{$col}` >= :{$col}";
-								if ( !in_array ( $temp, $wheres )) {
-									$wheres[] = $temp;
-									$col = $this->increment_keys ( $col, $params );
-									$params[$col] = trim ( str_replace ( '>=', '', $val ));
-								}
-							} elseif ( '>' == substr ( $val, 0, 1 )) {
-								$temp = "`{$col}` > :{$col}";
-								if ( !in_array ( $temp, $wheres )) {
-									$wheres[] = $temp;
-									$col = $this->increment_keys ( $col, $params );
-									$params[$col] = trim ( str_replace ( '>', '', $val ));
-								}
-							} elseif ( '<=' == substr ( $val, 0, 2 )) {
-								$temp = "`{$col}` <= :{$col}";
-								if ( !in_array ( $temp, $wheres )) {
-									$wheres[] = $temp;
-									$col = $this->increment_keys ( $col, $params );
-									$params[$col] = trim ( str_replace ( '<=', '', $val ));
-								}
-							} elseif ( '<' == substr ( $val, 0, 1 )) {
-								$temp = "`{$col}` < :{$col}";
-								if ( !in_array ( $temp, $wheres )) {
-									$wheres[] = $temp;
-									$col = $this->increment_keys ( $col, $params );
-									$params[$col] = trim ( str_replace ( '<', '', $val ));
-								}
-							} elseif ( '!=' == substr ( $val, 0, 2 )) {
-								$temp = "`{$col}` != :{$col}";
-								if ( !in_array ( $temp, $wheres )) {
-									$wheres[] = $temp;
-									$col = $this->increment_keys ( $col, $params );
-									$params[$col] = trim ( str_replace ( '!=', '', $val ));
-								}
-							} else {
-								$temp = "`{$col}` = :{$col}";
-								if ( !in_array ( $temp, $wheres )) {
-									$wheres[] = $temp;
-									$col = $this->increment_keys ( $col, $params );
-									$params[$col] = $val;
-								}
-							}
-						}
-					}
-				} else { // for a single table
-					if ( true == $this->valid_column ( $table, $col )) {
-						$temp = "`{$col}` = :{$col}";
-						if ( !in_array ( $temp, $wheres )) {
-							$wheres[] = $temp;
-							$col = $this->increment_keys ( $col, $params );
-							$params[$col] = $val;
-						}
-					} else {
-					}
-				}
-			}
-			$where = ( !empty ( $wheres )) ? 'WHERE ' . implode ( ' AND ', $wheres ) : '';
-		}
-
-		// filter
-		if ( is_array ( $filter )) {
-			foreach ( $filter as $col => $sort ) {
-				// validate column is real
-				if ( is_array ( $table )) { // for an array of tables
-					foreach ( $table as $tbl => $join ) {
-						if ( true == $this->valid_column ( $tbl, $col )) {
-							$sort = ( 'ASC' == strtoupper ( $sort ) || 'DESC' == strtoupper ( $sort )) ? strtoupper ( $sort ) : 'ASC';
-							$temp = "`{$col}` {$sort}";
-							if ( !in_array ( $temp, $filters )) {
-								$filters[] = $temp;
-							}
-						}
-					}
-				} else { // for a single table
-					if ( true == $this->valid_column ( $table, $col )) {
-						$sort = ( 'ASC' == strtoupper ( $sort ) || 'DESC' == strtoupper ( $sort )) ? strtoupper ( $sort ) : 'ASC';
-						$temp = "`{$col}` {$sort}";
-						if ( !in_array ( $temp, $filters )) {
-							$filters[] = $temp;
-						}
-					}
-				}
-			}
-			$filter = ( !empty ( $filters )) ? 'ORDER BY ' . implode ( ', ', $filters ) : '';
-		}
-
-		// group
-		if ( is_array ( $group )) {
-			foreach ( $group as $col ) {
-				// validate column is real
-				if ( is_array ( $table )) { // for an array of tables
-					foreach ( $table as $tbl => $join ) {
-						if ( true == $this->valid_column ( $tbl, $col )) {
-							$temp = "`{$col}`";
-							if ( !in_array ( $temp, $groups )) {
-								$groups[] = $temp;
-							}
-						}
-					}
-				} else { // for a single table
-					if ( true == $this->valid_column ( $table, $col )) {
-						$temp = "`{$col}`";
-						if ( !in_array ( $temp, $groups )) {
-							$groups[] = $temp;
-						}
-					}
-				}
-			}
-			$group = ( !empty ( $groups )) ? "GROUP BY " . implode ( ', ', $groups ) : '';
-		}
-
-		// limit
-		if ( is_numeric ( $limit ) || ( is_array ( $limit ) && 2 > count ( $limit ))) {
-			$limit = ( is_array ( $limit )) ? "LIMIT " . end ( $limit ) . " " : "LIMIT {$limit} ";
-		} elseif ( is_array ( $limit )) {
-			list ( $start, $stop ) = $limit;
-			if ( is_numeric ( $start ) && is_numeric ( $stop )) {
-				$limit = "LIMIT {$start}, {$stop} ";
-			} else {
-				$limit = '';
-			}
-		}
-
-		// tables and joins
-		if ( is_array ( $table )) {
-			// joins
-			$joins = array (
-				'LEFT JOIN',
-				'LEFT OUTER JOIN',
-				'INNER JOIN',
-				'OUTER JOIN',
-				'FULL JOIN',
-				'FULL OUTER JOIN',
-				'RIGHT JOIN',
-				'RIGHT OUTER JOIN',
-				'JOIN',
-			);
-			$join = ( in_array ( $join, $joins )) ? $join : 'LEFT OUTER JOIN';
-			foreach ( $table as $table => $col ) {
-				if ( true == $this->valid_table ( $table ) ) {
-					if ( is_array ( $col )) {
-						/* how to get previous and next tables to validate columns??????????
-						list ( $colA, $colB ) = $col;
-						if ( true == $this->valid_column ( $table, $colA ) && $this->valid_column ( $table, $colB )) {
-
-						}/***/
-					} else {
-						if ( true == $this->valid_column ( $table, $col )) {
-							$sql .= ( empty ( $sql )) ? "SELECT * FROM `{$table}` " : "{$join} `{$table}` USING ( `{$col}` ) ";
-						}
-					}
-				}
-			}
-		} else {
-			if ( true == $this->valid_table ( $table )) $sql = "SELECT * FROM {$table} ";
-		}
-		// logic and ordering
-		$sql .= "{$where} {$filter} ";
-
-		// grouping
-		if ( !empty ( $group )) $sql = "SELECT * FROM ( {$sql} ) `table` {$group} ";
-
-		// limit
-		$sql .= "{$limit}";
-
-		// count
-		if ( true === $count ) $sql = "SELECT COUNT(*) FROM ( {$sql} ) `records` ";
-
-		// execute and return
-		$res = $this->sql_exec ( $sql, $params );
-
-		// get count
-		if ( true === $count ) $res = end ( $res[0] );
-
-		// return query results
-		return $res;
-	}
 	// Insert row into database and update on duplicate primary key
-	public function insert_row( $table, $params, $update = true) {
+	public function insert_row( $table, $params, $update = true ) {
 		// validate table
-		if (false == $this->valid_table($table)) return false;
+		if( false == $this->valid_table( $table )) {
+			return false;
+		}
 
-		// verify params
+		// verify params were sent
 		if( empty( $params )) {
 			$this->err[] = "Error: missing query parameters.";
 			return false;
 		}
 
+		// validate columns in params
+		foreach( $params as $col => $val ) {
+			if( !valid_column( $col )) {
+				return false;
+			}
+		}
+
 		// prep columns and binding placeholders
-		$columns = array_keys($params);
+		$columns = array_keys( $params );
 		$cols = ( count( $params ) > 1 ) ? implode( "`,`", $columns ) : current( $columns );
 		$binds = ( count( $params ) > 1 ) ? implode( ", :", $columns ) : current( $columns );
 
@@ -1224,20 +917,20 @@ class Linchpin {
 		$query = "INSERT INTO `{$table}` (`{$cols}`) VALUES (:{$binds})";
 
 		// update on duplicate primary key
-		if (true == $update) {						// if update is set to true
-			$query .= " ON DUPLICATE KEY UPDATE ";	// append duplicate to query
-			$schema = $this->column_types($table);	// get table column data
-			foreach ($schema as $col) {				// loop through table columns
-				if ('PRI' != $col['Key'] && array_key_exists($col['Field'], $params)) {
-					$updates[] = "`{$col['Field']}`=:update_{$col['Field']}";
-					$params["update_{$col['Field']}"] = $params[$col['Field']];
+		if( true == $update ) {
+			$updates = array();
+			// get table primary key
+			$priKey = $this->table_primary_key( $table );
+			foreach( $params as $col => $val ) {
+				if( $col != $priKey ) {
+					$updates[] = "`{$col}` = :{$col}";
 				}
 			}
-			$query .= implode(",", $updates);
+			$query .= " ON DUPLICATE KEY UPDATE " . implode( ",", $updates );
 		}
 
 		// execute query
-		$res = $this->sql_exec( $query, $params );
+		$res = $this->sqlexec( $query, $params );
 		return $res;
 	}
 	// Update existing row from given key => value
@@ -1263,22 +956,26 @@ class Linchpin {
 
 		// compile and execute
 		$query = "UPDATE `{$table}` SET {$updates} WHERE {$where}";
-		return $this->sql_exec($query, $params);
+		return $this->sqlexec($query, $params);
 	}
 	// Delete a row
 	public function delete_row( $table, $params ) {
 		// check for valid table
-		if (false == $this->valid_table($table)) return false;
-		if( $this->logDebug ) $this->debug[] = "Valid table: {$table}";
-
-		foreach ($params as $col => $val) {
-			if (false == $this->valid_column($table, $col)) return false;
-			if( $this->logDebug ) $this->debug[] = "Valid column: {$col}";
-
-			$where = "`{$col}`=:{$col}";
+		if( !$this->valid_table($table)) {
+			return false;
 		}
 
-		if (!empty( $wheres )) {
+		if( $this->logDebug ) $this->debug[] = "Valid table: {$table}";
+
+		$wheres = array();
+		foreach( $params as $col => $val ) {
+			if( false == $this->valid_column( $table, $col )) return false;
+			if( $this->logDebug ) $this->debug[] = "Valid column: {$col}";
+
+			$wheres[] = "`{$col}`=:{$col}";
+		}
+
+		if( !empty( $wheres )) {
 			$where = implode( ' AND ', $wheres );
 		} else {
 			$this->err[] = "Can't delete row without valid parameters";
@@ -1287,113 +984,7 @@ class Linchpin {
 
 		// compile and execute
 		$query = "DELETE FROM `{$table}` WHERE {$where};";
-		return $this->sql_exec($query, $params);
-	}
-	// Increment column keys; a fetch_table helper function
-	public function increment_keys ( $key, $arr ) {
-		if ( is_array ( $arr ) && array_key_exists ( $key, $arr )) {
-			$i = 2;
-			while ( array_key_exists ( "{$key}{$i}", $arr )) $i++;
-			return "{$key}{$i}";
-		} else {
-			return $key;
-		}
-	}
-	// Convert an array of clause => glue associations to a 'col <=> :var' string and parameter array
-	public function array_to_wheres( $where, $tables = array()) {
-		if( is_array( $where ) && !empty( $where )) {
-			$wheres = array();
-			$params = array();
-			foreach ( $where as $clause => $bind ) {
-				if( !empty( $clause )) {
-					// parse clause
-					$arr = explode( ' ', trim( $clause ));
-					$col = $arr[0];
-					unset( $arr[0] );
-					$operand = strtoupper( $arr[1] );
-					unset( $arr[1] );
-					$val = trim( implode( ' ', $arr ));
-
-					// prep bind variable
-					$bind = strtoupper( $bind );
-
-					// strip out ticks
-					$col = str_replace( '`', '', trim( $col ));
-
-					// search for table.column criteria
-					$table = null;
-					if( false != strpos( $col, '.' )) {
-						list( $table, $col ) = explode( '.', $col );
-
-						// verify table
-						if( !array_key_exists( $table, $tables )) {
-							if( true == $this->valid_table( $table )) {
-								// verify column
-								if( true != $this->valid_column( $table, $col )) {
-									// column doesn't exist, next!
-									continue;
-								}
-							}
-						} else {
-							if( true != in_array( $col, $table )) {
-								// column doesn't exist, next!
-								continue;
-							}
-						}
-						$token = "{$table}_{$col}";
-					} else {
-						$token = $col;
-					}
-
-					// parse operand
-					if( 'IS' == $operand ) {
-						if( 'NULL' == strtoupper( $val ) || 'NOT NULL' == strtoupper( $val )) {
-							$wheres[] = ( !empty( $table )) ? " {$bind} `{$table}`.`{$col}` {$operand} ".strtoupper( $val ) : " {$bind} `{$col}` {$operand} ".strtoupper( $val );
-						}
-
-					} elseif ( in_array( $operand , array( 'LIKE','<','<=','=','!=','=>','>' ))) {
-						$bind = ( in_array( $bind, array( '', 'WHERE', 'OR', 'AND' ))) ? $bind : '';
-						$token = $this->increment_keys( $token, $params );
-						$wheres[] = ( !empty( $table )) ? " {$bind} `{$table}`.`{$col}` {$operand} :{$token}" : " {$bind} `{$col}` {$operand} :{$token}";
-						$params[$token] = $val;
-					}
-				}
-			}
-			$where = implode( $wheres );
-
-			return array( $where, $params );
-		} else {
-			return array( '', null );
-		}
-	}
-	// Convert an array of key => value associations to a colum => order string
-	public function array_to_filter ( $filter ) {
-		if ( is_array ( $filter )) {
-			$filters = array ();
-			foreach ( $filter as $col => $sort ) {
-				$sort = ( 'ASC' == strtoupper ( $sort ) || 'DESC' == strtoupper ( $sort )) ? strtoupper ( $sort ) : 'ASC';
-				$temp = "`{$col}` {$sort}";
-				if ( !in_array ( $temp, $filters )) {
-					$filters[] = $temp;
-				}
-			}
-			$filter = ( !empty ( $filters )) ? 'ORDER BY ' . implode ( ', ', $filters ) : '';
-
-			return $filter;
-		}
-	}
-	public function array_to_group ( $group ) {
-		if ( is_array ( $group )) {
-			foreach ( $group as $col ) {
-				$temp = "`{$col}`";
-				if ( !in_array ( $temp, $groups )) {
-					$groups[] = $temp;
-				}
-			}
-			$group = ( !empty ( $groups )) ? "GROUP BY " . implode ( ', ', $groups ) : '';
-
-			return $group;
-		}
+		return $this->sqlexec($query, $params);
 	}
 
 	##	8.0 Helper Functions
