@@ -125,9 +125,10 @@ Array
 If for some reason it says you do have errors, check the ``$class->err`` variable to see what's going on.
 
 ## Query Builders
-These are a set of functions that build queries from user-defined inputs. They work well enough for simple queries but do not handle things like duplicate columns and multiple types of joins in the same query very well. It is best to use these either for simple tasks or in a development setting to help troubleshoot while you work out the kinks of your code. Or not at all. As the old adage goes, is the juce worth the squeeze?
+These are a set of functions that build queries from user-defined inputs to modify table data. These have built-in table and column name verification to prevent erroneous queries and also incorperate the parameter binding within sqlexec() to prevent sql injection.
 
 ### Insert Row
+Inserts a row into a table.
 ```PHP
 insert_row( $table, $params, [ $update ]);
 ```
@@ -138,6 +139,7 @@ insert_row( $table, $params, [ $update ]);
 | `$update` | Boolean | Defined by 'col' => 'ASC' / 'DESC', not case sensitive. |
 
 ### Update Row
+Updates a row in a table.
 ```PHP
 update_row( $table, $params, $key );
 ```
@@ -148,6 +150,7 @@ update_row( $table, $params, $key );
 | `$key` | String | The primary key of the row in `$table` on which to update. |
 
 ### Delete Row
+Drops a row from a table.
 ```PHP
 delete_row( $table, $params );
 ```
