@@ -6,40 +6,36 @@ A MySQL PDO wrapper and "query manager" written in PHP.
   - [Executing Queries](#executing-queries)
   - [Performing Transactions](#performing-transactions)
 - [Query Builders](#query-builders)
-  - [Fetch Table](#fetch-table)
   - [Insert Row](#insert-row)
   - [Update Row](#update-row)
   - [Delete Row](#delete-row)
 
 ## Background
-The goal of this project project was to be a "lightweight" PDO wrapper class that could be easily incorporated into any project. It is meant to be a base class from which you can extend your own classes from, but it is functional enough to just use as is, bare-bones.
+The goal of this project project was to be a "lightweight" PDO wrapper class that could be easily incorporated into any project. It is meant to be a parent class from which you can extend your own classes from, but it is functional enough to just use as is, bare-bones.
 
 ## Class Usage
 ### Declaring The Class
-Declaring the class must be done using a configuration file. When using the configuration file, simply declare the class like so and the configuration file will automatically be generated the first time you run the script:
+Declaring the class used to require a configuration file, however this causes issues should the same script want to connect to multiple databases. To resolve this, each instance of the class will require it's own set of variables, as exampled below:
 ```PHP
-$lp = new Linchipin();
+$host = 'localhost';
+$user = 'root';
+$pass = '';
+$name = 'database_name';
+$cms = new Linchpin( $host, $user, $pass, $name );
 ```
-The config should look like this:
+The real meat and potatoes of this class is being used as a parent class. If you are using a child class to extend Linchipin, make sure to also call the parent contstruct to ensure the new class passes the connection details to Linchpin and loads the schema data:
 ```PHP
-<?php
-		  define( 'DB_HOST', 'localhost' );
-		  define( 'DB_USER', 'root' );
-		  define( 'DB_PASS', '' );
-		  define( 'DB_NAME', 'databasename' );
-```
-If you are using a child class to extend Linchipin, make sure to also call the parent contstruct to ensure the class loads the configuration file and works properly:
-```PHP
-  public function __construct() {
-    // do the database thing
-    parent::__construct();
-
-    // add your own code
-  }
+class ChildClass extends Linchpin {
+    	// Constructor
+    	public function __construct( $host, $user, $pass, $name ) {
+	    	// database functions
+	    	parent::__construct( $host, $user, $pass, $name );
+    	}
+}
 ```
 
 ### Executing Queries
-Executing queries is done using the ```sqlexec()``` function:
+Executing queries is done using the `sqlexec()` function:
 ```PHP
 // call the class
 $lp = new Linchpin();
@@ -47,7 +43,7 @@ $lp = new Linchpin();
 $query = "SELECT * FROM `table`";
 $results = $lp->sqlexec( $query );
 ```
-To perform a query with variables, use the second argument for ```sqlexec()``` to pass an array of :name => value pairs:
+To perform a query with variables, use the second argument for `sqlexec()` to pass an array of `[:name => 'value']` pairs:
 ```PHP
 $query = "SELECT * FROM `table` WHERE `column_name` = :var_name";
 $params = array(
@@ -131,31 +127,31 @@ If for some reason it says you do have errors, check the ``$class->err`` variabl
 ## Query Builders
 These are a set of functions that build queries from user-defined inputs. They work well enough for simple queries but do not handle things like duplicate columns and multiple types of joins in the same query very well. It is best to use these either for simple tasks or in a development setting to help troubleshoot while you work out the kinks of your code. Or not at all. As the old adage goes, is the juce worth the squeeze?
 
-### Fetch Table
-```PHP
-fetch_table( $table, [ $where, $filter, $group, $limit, $join, $count ]);
-```
-| Argument | Type | Description|
-| --- | --- | --- |
-| `$table` | String or Array | The table name or names in the database. If an array is used, each table is the key in the array and the value is the type of join. |
-| `$where` | Array | Defined by 'col' => 'value', so not good when you need to use 'col' twice. |
-| `$filter` | Array | Defined by 'col' => 'ASC' / 'DESC', not case sensitive. |
-| `$group` | String or Array | Columns to group the query by: `col_1` or `array('col_1','col_2')` |
-| `$limit` | Integer or Array | Sets limit of query; use a single number to set the limit of rows returned, or use an array of two numbers to declare a `LIMIT start, stop` expression on the query. |
-| `$join` | Array | This doesn't work because the variable ends up overwritten earlier in the function. To be continued... |
-| `$count` | Bool | Set this to `true` to return the row count; this will be under the key `COUNT(*)`.
-
 ### Insert Row
 ```PHP
 insert_row( $table, $params, [ $update ]);
 ```
+| Argument | Type | Description |
+| --- | --- | --- |
+| `$table` | String | The table name in the database on which to perform the insert. |
+| `$params` | Array | Array of `['col' => 'val']` pairs where `col` is the column name and `val` is the value to insert. |
+| `$update` | Boolean | Defined by 'col' => 'ASC' / 'DESC', not case sensitive. |
 
 ### Update Row
 ```PHP
 update_row( $table, $params, $key );
 ```
+| Argument | Type | Description |
+| --- | --- | --- |
+| `$table` | String | The table name in the database on which to perform the update. |
+| `$params` | Array | Array of `['col' => 'val']` pairs where `col` is the column name and `val` is the value to update. |
+| `$key` | String | The primary key of the row in `$table` on which to update. |
 
 ### Delete Row
 ```PHP
 delete_row( $table, $params );
 ```
+| Argument | Type | Description |
+| --- | --- | --- |
+| `$table` | String | The table name or names in the database. If an array is used, each table is the key in the array and the value is the type of join. |
+| `$params` | Array | Defined by 'col' => 'value', so not good when you need to use 'col' twice. |
